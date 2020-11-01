@@ -23,17 +23,23 @@ size_t Keyboard::Menu::add(std::string_view submenu, ActionType f)
 static constexpr u32 COLOR_WHITE = C2D_Color32(255,255,255,255);
 static constexpr u32 COLOR_GRAY = C2D_Color32(160,160,160,255);
 static constexpr u32 COLOR_BLACK = C2D_Color32(0,0,0,255);
-static constexpr Tex3DS_SubTexture EQUATION_SUBTEX = {320, EQU_REGION_HEIGHT, 0.0f, 1.0f, (320/512.0f), 1.0f - (EQU_REGION_HEIGHT/128.0f)}; 
+#define REMOVE_ODD(v) (((v) & ~1) + (((v) & 1) << 1))
+#define MK_SUBTEX(w, h, w2, h2) {(w), REMOVE_ODD(h), 0.0f, 1.0f, ((w)/(w2)), 1.0f - (REMOVE_ODD(h)/(h2))}
+static constexpr Tex3DS_SubTexture EQUATION_SUBTEX = MK_SUBTEX(320, EQU_REGION_HEIGHT, 512.0f, 128.0f);
+static constexpr Tex3DS_SubTexture KEYBOARD_SUBTEX = MK_SUBTEX(320, 240 - (EQU_REGION_HEIGHT + 1), 512.0f, 256.0f);
+#undef MK_SUBTEX
+#undef REMOVE_ODD
 static C2D_ImageTint YES_TINT, NO_TINT, TEXT_YES_TINT, TEXT_NO_TINT;
 
 Keyboard::Keyboard(C2D_SpriteSheet sprites)
 :
 calculating_flag(false), wait_thread(false),
 previousAnswer(0.0f), result(0.0f),
+keyboard_tex(512, 256, GPU_RGBA8),
 current_tex(512, 128, GPU_RGBA8), memory_tex(512, 128, GPU_RGBA8),
 calcThread(nullptr),
 root_menu(nullptr, ""), current_menu(&root_menu),
-selected_entry(-1)
+selected_entry(-1), changed_keyboard(true)
 {
     const auto punct_menu_id = root_menu.add("punctuation");
     const auto func_menu_id = root_menu.add("functions");
@@ -291,6 +297,7 @@ void Keyboard::handle_buttons(const u32 kDown)
                 {
                     current_menu = &m;
                     selected_entry = -1;
+                    changed_keyboard = true;
                 }
             }
         }
@@ -299,12 +306,14 @@ void Keyboard::handle_buttons(const u32 kDown)
             if(selected_entry != -1)
             {
                 selected_entry = -1;
+                changed_keyboard = true;
             }
             else if(current_menu->parent != nullptr)
             {
                 auto prev_menu = current_menu->parent;
                 current_menu = prev_menu;
                 selected_entry = -1;
+                changed_keyboard = true;
             }
         }
         else if(kDown & KEY_DUP)
@@ -312,6 +321,7 @@ void Keyboard::handle_buttons(const u32 kDown)
             if(selected_entry == -1)
             {
                 selected_entry = 0;
+                changed_keyboard = true;
             }
         }
         else if(kDown & KEY_DDOWN)
@@ -319,6 +329,7 @@ void Keyboard::handle_buttons(const u32 kDown)
             if(selected_entry != -1)
             {
                 selected_entry = -1;
+                changed_keyboard = true;
             }
         }
         else if(kDown & KEY_DLEFT)
@@ -330,6 +341,7 @@ void Keyboard::handle_buttons(const u32 kDown)
                     selected_entry = current_menu->entries.size();
                 }
                 selected_entry--;
+                changed_keyboard = true;
             }
         }
         else if(kDown & KEY_DRIGHT)
@@ -341,6 +353,7 @@ void Keyboard::handle_buttons(const u32 kDown)
                 {
                     selected_entry = 0;
                 }
+                changed_keyboard = true;
             }
         }
     }
@@ -365,7 +378,7 @@ void Keyboard::handle_circle_pad(const int x, const int y)
             if((std::min(-EQU_REGION_HEIGHT/2, render_result.min_y) + EQU_REGION_HEIGHT/2) < at_y)
             {
                 any_change = true;
-                at_y--;
+                at_y -= 2;
             }
         }
         else if(y > 20)
@@ -373,7 +386,7 @@ void Keyboard::handle_circle_pad(const int x, const int y)
             if(((std::max(EQU_REGION_HEIGHT/2, render_result.max_y) - EQU_REGION_HEIGHT/2) > at_y))
             {
                 any_change = true;
-                at_y++;
+                at_y += 2;
             }
         }
     }
@@ -388,11 +401,19 @@ void Keyboard::handle_circle_pad(const int x, const int y)
             const auto on_part = std::div(int(ang_deg), degrees_per_part_full.quot);
             if(on_part.rem < 2 || on_part.rem >= (degrees_per_part_full.quot - 2))
             {
-                selected_entry = -1;
+                if(selected_entry != -1)
+                {
+                    selected_entry = -1;
+                    changed_keyboard = true;
+                }
             }
             else
             {
-                selected_entry = on_part.quot;
+                if(on_part.quot != selected_entry)
+                {
+                    selected_entry = on_part.quot;
+                    changed_keyboard = true;
+                }
             }
         }
     }
@@ -429,14 +450,97 @@ void Keyboard::handle_touch(const int x, const int y)
     }
 }
 
+void Keyboard::do_clears()
+{
+    constexpr u32 transparent_color = C2D_Color32(0,0,0,0);
+    if(any_change)
+    {
+        auto t = current_tex.get_target();
+        C2D_TargetClear(t, transparent_color);
+    }
+    if(changed_keyboard)
+    {
+        auto t = keyboard_tex.get_target();
+        C2D_TargetClear(t, transparent_color);
+    }
+}
+void Keyboard::update_keyboard(C2D_SpriteSheet sprites)
+{
+    if(changed_keyboard)
+    {
+        changed_keyboard = false;
+        auto t = keyboard_tex.get_target();
+        C2D_SceneBegin(t);
+
+        using DrawType = void(*)(const std::vector<Menu>&, const int, C2D_SpriteSheet);
+        static constexpr DrawType DrawParts = [](const std::vector<Menu>& parts, const int selected, C2D_SpriteSheet sprites) -> void {
+            const int partCount = parts.size();
+            const auto degrees_per_part_full = std::div(360, partCount);
+            const auto degrees_per_part = degrees_per_part_full.quot - 4;
+
+            C2D_Sprite partYes;
+            C2D_SpriteFromSheet(&partYes, sprites, sprites_circle_yes_idx);
+            C2D_SpriteSetDepth(&partYes, 0.625f);
+            C2D_SpriteSetCenter(&partYes, 0.5f, 0.5f);
+            C2D_SpriteSetPos(&partYes, KEYBOARD_SUBTEX.width/2.0f, (KEYBOARD_SUBTEX.height)/2.0f);
+
+            C2D_Sprite partNo;
+            C2D_SpriteFromSheet(&partNo, sprites, sprites_circle_not_idx);
+            C2D_SpriteSetDepth(&partNo, 0.625f);
+            C2D_SpriteSetCenter(&partNo, 0.5f, 0.5f);
+            C2D_SpriteSetPos(&partNo, KEYBOARD_SUBTEX.width/2.0f, KEYBOARD_SUBTEX.height/2.0f);
+
+            int deg = (degrees_per_part_full.rem/2) + 1;
+            for(int p = 0; p < partCount; ++p)
+            {
+                C2D_Sprite* s = (p == selected ? &partYes : &partNo);
+                const C2D_ImageTint* t = (p == selected ? &YES_TINT : &NO_TINT );
+
+                deg += 2;
+                for(int d = 0; d < degrees_per_part; ++d)
+                {
+                    C2D_SpriteSetRotationDegrees(s, deg);
+                    C2D_DrawSpriteTinted(s, t);
+                    deg++;
+                }
+                deg += 2;
+            }
+
+            deg = (degrees_per_part_full.rem/2) + 1;
+            for(int p = 0; p < partCount; ++p)
+            {
+                const auto& part = TextMap::char_to_sprite->menu.at(parts[p].name);
+                const C2D_ImageTint* it = (p == selected ? &TEXT_YES_TINT : &TEXT_NO_TINT );
+                const float distance = (p == selected ? 58.0f : 55.0f);
+
+                deg += 2;
+                const int d = deg + degrees_per_part/2;
+
+                const float rad_ang = ((d - 90)) * 3.14159f / 180.0f;
+                const int dx = std::cos(rad_ang) * distance;
+                const int dy = std::sin(rad_ang) * distance;
+                float x = (KEYBOARD_SUBTEX.width/2.0f) + dx - (part.width / 2.0f);
+                const float y = (KEYBOARD_SUBTEX.height/2.0f) + dy - (24 / 2.0f);
+                for(const auto& i : part.sprites)
+                {
+                    C2D_DrawImageAt(i, x, y, 0.75f, it);
+                    x += i.subtex->width;
+                }
+
+                deg += degrees_per_part;
+                deg += 2;
+            }
+        };
+
+        DrawParts(current_menu->entries, selected_entry, sprites);
+    }
+}
 void Keyboard::update_equation(C2D_SpriteSheet sprites)
 {
     if(any_change)
     {
         any_change = false;
-        constexpr u32 transparent_color = C2D_Color32(0,0,0,0);
         auto t = current_tex.get_target();
-        C2D_TargetClear(t, transparent_color);
         C2D_SceneBegin(t);
         render_result = current_eq->render(at_x, at_y, editing_part, editing_char, sprites);
     }
@@ -497,69 +601,9 @@ void Keyboard::draw(C2D_SpriteSheet sprites) const
         C2D_DrawImageAt(spr, (320.0f - spr.subtex->width)/2.0f, EQU_REGION_HEIGHT - spr.subtex->height, 0.5f, &arrow_tint);
     }
 
-    C2D_DrawRectSolid(0.0f, EQU_REGION_HEIGHT, 0.0f, 320.0f, 1.0f, C2D_Color32(0,0,0,255));
+    C2D_DrawRectSolid(0, EQU_REGION_HEIGHT, 0.0f, 320, 1, C2D_Color32(0,0,0,255));
 
-    using DrawType = void(*)(const std::vector<Menu>&, const int, C2D_SpriteSheet);
-    static constexpr DrawType DrawParts = [](const std::vector<Menu>& parts, const int selected, C2D_SpriteSheet sprites) -> void {
-        const int partCount = parts.size();
-        const auto degrees_per_part_full = std::div(360, partCount);
-        const auto degrees_per_part = degrees_per_part_full.quot - 4;
-
-        C2D_Sprite partYes;
-        C2D_SpriteFromSheet(&partYes, sprites, sprites_circle_yes_idx);
-        C2D_SpriteSetDepth(&partYes, 0.625f);
-        C2D_SpriteSetCenter(&partYes, 0.5f, 0.5f);
-        C2D_SpriteSetPos(&partYes, 320/2.0f, (240 - EQU_REGION_HEIGHT)/2.0f + EQU_REGION_HEIGHT);
-
-        C2D_Sprite partNo;
-        C2D_SpriteFromSheet(&partNo, sprites, sprites_circle_not_idx);
-        C2D_SpriteSetDepth(&partNo, 0.625f);
-        C2D_SpriteSetCenter(&partNo, 0.5f, 0.5f);
-        C2D_SpriteSetPos(&partNo, 320/2.0f, (240 - EQU_REGION_HEIGHT)/2.0f + EQU_REGION_HEIGHT);
-
-        int deg = (degrees_per_part_full.rem/2) + 1;
-        for(int p = 0; p < partCount; ++p)
-        {
-            C2D_Sprite* s = (p == selected ? &partYes : &partNo);
-            const C2D_ImageTint* t = (p == selected ? &YES_TINT : &NO_TINT );
-
-            deg += 2;
-            for(int d = 0; d < degrees_per_part; ++d)
-            {
-                C2D_SpriteSetRotationDegrees(s, deg);
-                C2D_DrawSpriteTinted(s, t);
-                deg++;
-            }
-            deg += 2;
-        }
-
-        deg = (degrees_per_part_full.rem/2) + 1;
-        for(int p = 0; p < partCount; ++p)
-        {
-            const auto& part = TextMap::char_to_sprite->menu.at(parts[p].name);
-            const C2D_ImageTint* it = (p == selected ? &TEXT_YES_TINT : &TEXT_NO_TINT );
-            const float distance = (p == selected ? 58.0f : 55.0f);
-
-            deg += 2;
-            const int d = deg + degrees_per_part/2;
-
-            const float rad_ang = ((d - 90)) * 3.14159f / 180.0f;
-            const int dx = std::cos(rad_ang) * distance;
-            const int dy = std::sin(rad_ang) * distance;
-            float x = (320/2.0f) + dx - (part.width / 2.0f);
-            const float y = ((240 - EQU_REGION_HEIGHT)/2.0f) + EQU_REGION_HEIGHT + dy - (24 / 2.0f);
-            for(const auto& i : part.sprites)
-            {
-                C2D_DrawImageAt(i, x, y, 0.75f, it);
-                x += i.subtex->width;
-            }
-
-            deg += degrees_per_part;
-            deg += 2;
-        }
-    };
-
-    DrawParts(current_menu->entries, selected_entry, sprites);
+    C2D_DrawImageAt(C2D_Image{keyboard_tex.get_tex(), &KEYBOARD_SUBTEX}, 0, EQU_REGION_HEIGHT + 1, 0.0f);
 
     constexpr u32 hide_color = C2D_Color32(32, 32, 32, 64);
     if(in_equ)

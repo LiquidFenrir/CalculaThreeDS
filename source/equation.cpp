@@ -43,7 +43,7 @@ struct RenderInfo {
 
 struct RenderPart {
     int data{};
-    // in deviation from the previous, counted in quarter parts
+    // in deviation from the previous, counted in half parts
     int middle_change{};
     // in number of half parts, from the middle
     int y_start{}; // positive, up
@@ -76,8 +76,7 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
             container_size.y_start = std::max(container_size.y_start, ps.y_start + ps.middle_change);
             container_size.y_end = std::min(container_size.y_end, ps.y_end + ps.middle_change);
             container_size.content_middle_high = std::max(container_size.content_middle_high, ps.middle_change + ps.content_middle_high);
-            container_size.content_middle_low = std::max(container_size.content_middle_low, ps.middle_change + ps.content_middle_low);
-            fprintf(stderr, "adding part to container: s e h l -> %d %d %d %d\n", container_size.y_start, container_size.y_end, container_size.content_middle_high, container_size.content_middle_low);
+            container_size.content_middle_low = std::min(container_size.content_middle_low, ps.middle_change + ps.content_middle_low);
         }
     };
     const auto do_part_basic = [&](const int idx) -> void {
@@ -86,7 +85,6 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
 
         ps.data = str_to_len(p.value);
         ps.content_width = ps.data;
-        ps.y_start = 1;
         ps.y_start = 1;
         ps.y_end = -1;
 
@@ -113,9 +111,7 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
                     auto& aps = part_sizes[associated_id];
                     auto& ps = part_sizes[current_idx];
 
-                    fprintf(stderr, "EXPONENT END: s e h l -> %d %d %d %d\n", aps.y_start, aps.y_end, aps.content_middle_high, aps.content_middle_low);
-
-                    const int delta = (aps.y_start - aps.y_end) - (aps.content_middle_low);
+                    const int delta = (aps.y_start - aps.content_middle_high) - aps.y_end;
 
                     aps.middle_change = delta;
                     ps.middle_change = -delta;
@@ -133,21 +129,20 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
 
                     if(check_pos_is(ap.meta.position, Part::Position::End)) // ending bottom part
                     {
-                        fprintf(stderr, "BOTTOM FRACTION END: s e h l -> %d %d %d %d\n", aps.y_start, aps.y_end, aps.content_middle_high, aps.content_middle_low);
-                        ps.middle_change = (aps.y_start - aps.y_end);
-
-                        RenderPart cp = aps;
-                        cp.content_width = std::max(aps.content_width, aps.data);
-                        add_content_info(cp);
+                        ps.middle_change = aps.y_start + 1;
 
                         aps.middle_change += -ps.middle_change; // middle
                         aps.associated = current_idx; // middle.associated points to end
                         ps.associated = associated_id; // end.associated points to middle
+
+                        RenderPart cp = aps;
+                        cp.content_width = std::max(aps.content_width, aps.data);
+                        cp.middle_change = -ps.middle_change;
+                        add_content_info(cp);
                     }
                     else // ending top part
                     {
-                        fprintf(stderr, "TOP FRACTION END: s e h l -> %d %d %d %d\n", aps.y_start, aps.y_end, aps.content_middle_high, aps.content_middle_low);
-                        aps.middle_change = (aps.y_start - aps.y_end) - (aps.content_middle_low); // start
+                        aps.middle_change = 2 + (-aps.y_end - 1); // start
                         ps.middle_change = -aps.middle_change;
                         aps.associated = current_idx; // start.associated points to middle
                         ps.data = aps.content_width; // middle.data is start.content_width
@@ -174,7 +169,6 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
 
             if(check_pos_is(part.meta.position, Part::Position::Start))
             {
-                fprintf(stderr, "container start\n");
                 id_stack.push_back(current_idx);
             }
         }
@@ -449,9 +443,7 @@ Equation::RenderResult Equation::render(const int x, const int y,const int editi
         editing_part,
         editing_char,
     };
-    fprintf(stderr, "draw start\n");
     render_parts(parts, info, out, sprites);
-    fprintf(stderr, "draw end\n");
     return out;
 }
 

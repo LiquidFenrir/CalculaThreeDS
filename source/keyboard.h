@@ -26,6 +26,8 @@ struct Keyboard {
 
     void print_info();
 
+    void do_clears();
+    void update_keyboard(C2D_SpriteSheet sprites);
     void update_equation(C2D_SpriteSheet sprites);
     void draw(C2D_SpriteSheet sprites) const;
     void draw_loader() const;
@@ -69,6 +71,7 @@ private:
     float result;
     std::vector<MemoryLine> memory;
 
+    mutable Tex keyboard_tex;
     mutable Tex current_tex;
     mutable Tex memory_tex; // only one extra visible at once
 
@@ -77,6 +80,7 @@ private:
     Menu root_menu;
     Menu* current_menu;
     int selected_entry;
+    bool changed_keyboard;
 };
 
 #endif

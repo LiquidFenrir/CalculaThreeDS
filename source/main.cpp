@@ -6,8 +6,6 @@
 
 #include <cstdio>
 
-#define DEBUG(...) fprintf(stderr, __VA_ARGS__)
-
 u32 __stacksize__ = 1 * 1024 * 1024;
 
 void Keyboard::print_info()
@@ -61,6 +59,8 @@ int main(int argc, char** argv)
 
         if(!calculating)
         {
+            kb.do_clears();
+            kb.update_keyboard(sprites);
             kb.update_equation(sprites);
         }
 
@@ -91,17 +91,17 @@ int main(int argc, char** argv)
             {
                 kb.handle_buttons(kDown);
             }
-            else if(kHeld & CIRCLE_PAD_VALUES)
-            {
-                circlePosition pos;
-                hidCircleRead(&pos);
-                kb.handle_circle_pad(pos.dx, pos.dy);
-            }
             else if(kDown & KEY_TOUCH)
             {
                 touchPosition pos;
                 hidTouchRead(&pos);
                 kb.handle_touch(pos.px, pos.py);
+            }
+            else
+            {
+                circlePosition pos;
+                hidCircleRead(&pos);
+                if(abs(pos.dx) > 20 || abs(pos.dy) > 20) kb.handle_circle_pad(pos.dx, pos.dy);
             }
         }
     }
