@@ -27,7 +27,7 @@ struct RenderInfo {
 
     bool can_draw(const int vertical_offset) const
     {
-        const bool x_correct = (min_x - 12) <= current_x && current_x < max_x;
+        const bool x_correct = (min_x - (13 -1)) <= current_x && current_x < max_x;
         const bool y_correct = -(EQU_REGION_HEIGHT/2 + 24/2) < (vertical_offset - center_y) && (vertical_offset - center_y) <= (EQU_REGION_HEIGHT/2 + 24);
         return x_correct && y_correct;
     }
@@ -52,7 +52,8 @@ struct RenderPart {
     int associated{};
     int content_width{};
     int content_middle_high{};
-    int content_middle_low{};
+    int paren_y_start{};
+    int paren_y_end{};
 };
 static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPart>& part_sizes)
 {
@@ -67,16 +68,39 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
         return ((s.empty()) ? (1) : (s.size()));
     };
 
-    const auto add_content_info = [&](const RenderPart& ps, const bool care_width = true) -> void {
+    enum CareAbout : int {
+        CA_Width = 1,
+        CA_HeightBelow = 2,
+        CA_HeightAbove = 4,
+        CA_All = 1 | 2 | 4,
+    };
+    const auto add_content_info = [&](const RenderPart& ps, const CareAbout care = CA_All) -> void {
         if(!id_stack.empty())
         {
             auto& container_size = part_sizes[id_stack.back()];
-            if(care_width) container_size.content_width += ps.content_width;
+            if(care & CA_Width)
+            {
+                container_size.content_width += ps.content_width;
+            }
 
-            container_size.y_start = std::max(container_size.y_start, ps.y_start + ps.middle_change);
-            container_size.y_end = std::min(container_size.y_end, ps.y_end + ps.middle_change);
-            container_size.content_middle_high = std::max(container_size.content_middle_high, ps.middle_change + ps.content_middle_high);
-            container_size.content_middle_low = std::min(container_size.content_middle_low, ps.middle_change + ps.content_middle_low);
+            if(care & (CA_HeightAbove | CA_HeightBelow))
+            {
+                if(care & CA_HeightAbove)
+                {
+                    container_size.y_start = std::max(container_size.y_start, ps.y_start + ps.middle_change);
+                    container_size.paren_y_start = std::max(container_size.paren_y_start, container_size.y_start);
+                    container_size.paren_y_start = std::max(container_size.paren_y_start, ps.paren_y_start);
+                }
+
+                if(care & CA_HeightBelow)
+                {
+                    container_size.y_end = std::min(container_size.y_end, ps.y_end + ps.middle_change);
+                    container_size.paren_y_end = std::min(container_size.paren_y_end, container_size.y_end);
+                    container_size.paren_y_end = std::min(container_size.paren_y_end, ps.paren_y_end);
+                }
+
+                container_size.content_middle_high = std::max(container_size.content_middle_high, ps.middle_change + ps.content_middle_high);
+            }
         }
     };
     const auto do_part_basic = [&](const int idx) -> void {
@@ -104,13 +128,13 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
         {
             if(check_pos_is(part.meta.position, Part::Position::End))
             {
+                const int associated_id = pop_id();
+                const auto& ap = parts[associated_id];
+                auto& aps = part_sizes[associated_id];
+                auto& ps = part_sizes[current_idx];
+
                 if(part.meta.special == Part::Specialty::Exponent)
                 {
-                    const int associated_id = pop_id();
-                    const auto& ap = parts[associated_id];
-                    auto& aps = part_sizes[associated_id];
-                    auto& ps = part_sizes[current_idx];
-
                     const int delta = (aps.y_start - aps.content_middle_high) - aps.y_end;
 
                     aps.middle_change = delta;
@@ -118,15 +142,10 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
 
                     aps.associated = current_idx;
                     ps.associated = associated_id;
-                    add_content_info(aps);
+                    add_content_info(aps, CA_All);
                 }
                 else if(part.meta.special == Part::Specialty::Fraction)
                 {
-                    const int associated_id = pop_id();
-                    const auto& ap = parts[associated_id];
-                    auto& aps = part_sizes[associated_id];
-                    auto& ps = part_sizes[current_idx];
-
                     if(check_pos_is(ap.meta.position, Part::Position::End)) // ending bottom part
                     {
                         ps.middle_change = aps.y_start + 1;
@@ -138,32 +157,29 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
                         RenderPart cp = aps;
                         cp.content_width = std::max(aps.content_width, aps.data);
                         cp.middle_change = -ps.middle_change;
-                        add_content_info(cp);
+                        add_content_info(cp, CareAbout(CA_HeightBelow | CA_Width));
                     }
                     else // ending top part
                     {
                         aps.middle_change = 2 + (-aps.y_end - 1); // start
+
                         ps.middle_change = -aps.middle_change;
                         aps.associated = current_idx; // start.associated points to middle
                         ps.data = aps.content_width; // middle.data is start.content_width
 
-                        add_content_info(aps, false);
+                        add_content_info(aps, CA_HeightAbove);
                     }
                 }
                 else if(part.meta.special == Part::Specialty::Paren)
                 {
-                    const int associated_id = pop_id();
-                    const auto& ap = parts[associated_id];
-                    auto& aps = part_sizes[associated_id];
-                    auto& ps = part_sizes[current_idx];
-
                     aps.associated = current_idx;
                     ps.associated = associated_id;
-                    ps.y_start = aps.y_start;
-                    ps.y_end = aps.y_end;
+
+                    ps.paren_y_start = aps.paren_y_start;
+                    ps.paren_y_end = aps.paren_y_end;
 
                     aps.content_width += 2;
-                    add_content_info(aps);
+                    add_content_info(aps, CA_All);
                 }
             }
 
@@ -226,8 +242,9 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
     C2D_PlainImageTint(&temp_tint, gray_color, 1.0f);
 
     const auto draw_paren = [&](const C2D_Image* sprites, const int vertical_offset, const int y_start, const int y_end, const bool tmp) -> void {
-        const int span_pixels = (((y_start - y_end) - 2) * 12) + 1;
-        const int pixel_y = info.get_y(vertical_offset) - ((y_start - 1) * 12);
+        const int span = (y_start - y_end) - 2;
+        const int span_pixels = (span * 24 / 4) + 1;
+        const int pixel_y = info.get_y(vertical_offset) - ((y_start - 1) * 24 / 4);
         const int x = info.get_x();
         C2D_ImageTint* tnt = tmp ? &temp_tint : &text_tint;
         C2D_DrawImageAt(sprites[0], x, pixel_y, 0.0f, tnt);
@@ -366,19 +383,22 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
         {
             if(part.meta.special == Part::Specialty::Paren)
             {
+                const C2D_Image* sprs = nullptr;
                 if(part.meta.position == Part::Position::Start)
                 {
-                    draw_paren(lpa_sprites, vertical_offset, part_size.y_start, part_size.y_end, part.meta.tmp);
+                    sprs = lpa_sprites;
                 }
                 else if(part.meta.position == Part::Position::End)
                 {
-                    draw_paren(rpa_sprites, vertical_offset, part_size.y_start, part_size.y_end, part.meta.tmp);
+                    sprs = rpa_sprites;
                 }
 
-                const int h = ((part_size.y_start - part_size.y_end) * 12) + 1;
+                draw_paren(sprs, vertical_offset, part_size.paren_y_start, part_size.paren_y_end, part.meta.tmp);
+
+                const int h = ((part_size.paren_y_start - part_size.paren_y_end) * 24 / 2) + 1;
                 for(int y = 0; y < h; y++)
                 {
-                    const int actual_y = info.get_y(vertical_offset) - ((part_size.y_start - 1) * 12) + y;
+                    const int actual_y = info.get_y(vertical_offset) - ((part_size.paren_y_start - 1) * 24 / 2) + y;
                     if(actual_y >= 0 && actual_y < EQU_REGION_HEIGHT)
                     {
                         const int y_part = actual_y * 320;
@@ -401,7 +421,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                 {
                     const auto& middle_size = part_sizes[part_size.associated];
                     const int max_width = std::max(middle_size.content_width, part_size.content_width);
-                    C2D_DrawRectSolid(info.get_x(), info.get_y(vertical_offset) + 12 - 1, 0.0f, max_width * 13, 2.0f, black_color);
+                    C2D_DrawRectSolid(info.get_x(), info.get_y(vertical_offset) + 24 / 2 - 1, 0.0f, max_width * 13, 2.0f, black_color);
                     info.current_x += ((max_width - part_size.content_width) * 13)/2; // top align
                 }
                 else if(part.meta.position == Part::Position::Middle)
@@ -429,8 +449,8 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
     }
 
     out.w = info.current_x;
-    out.min_y = min_vert - 12;
-    out.max_y = max_vert + 12;
+    out.min_y = min_vert - 24 / 2;
+    out.max_y = max_vert + 24 / 2;
     part_sizes.clear();
 }
 
@@ -535,7 +555,7 @@ void Equation::find_matching_paren(const int paren_pos)
 }
 std::pair<bool, bool> Equation::add_part_at(int& current_part_id, int& at_position, const Part::Specialty special, const Part::Position position, const int assoc)
 {
-    if(static_cast<size_t>(at_position) == parts[current_part_id].value.size())
+    if(assoc == -1 && static_cast<size_t>(at_position) == parts[current_part_id].value.size())
     {
         auto& next_part = parts[parts[current_part_id].meta.next];
         if(special == Part::Specialty::Paren && next_part.meta.special == Part::Specialty::Paren && next_part.meta.position == position && next_part.meta.tmp)

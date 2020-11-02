@@ -54,8 +54,24 @@ selected_entry(-1), changed_keyboard(true)
     auto& punct_menu = root_menu.entries[punct_menu_id];
 
     punct_menu.add("+", ADD_CHAR("+"));
-    punct_menu.add("-", ADD_CHAR("-"));
-    punct_menu.add("*", ADD_CHAR("*"));
+    punct_menu.add(")", [](Equation& e, int& cur_char, int& cur_part) -> void {
+        const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, Part::Specialty::Paren, Part::Position::End);
+        const int cp_part = cur_part;
+        if(!have_any_after)
+        {
+            e.add_part_at(cur_part, cur_char);
+        }
+        else
+        {
+            e.right_of(cur_part, cur_char);
+        }
+
+        if(e.parts[cp_part].meta.assoc == -1)
+        {
+            e.find_matching_paren(cp_part);
+        }
+    });
+    punct_menu.add(".", ADD_CHAR("."));
     punct_menu.add("/", [](Equation& e, int& cur_char, int& cur_part) -> void {
         e.add_part_at(cur_part, cur_char, Part::Specialty::Fraction, Part::Position::Start);
         const auto assoc_s = cur_part;
@@ -74,6 +90,7 @@ selected_entry(-1), changed_keyboard(true)
         cur_part = cp_part;
         cur_char = cp_char;
     });
+    punct_menu.add("*", ADD_CHAR("*"));
     punct_menu.add("^", [](Equation& e, int& cur_char, int& cur_part) -> void {
         e.add_part_at(cur_part, cur_char, Part::Specialty::Exponent, Part::Position::Start);
         const auto assoc_s = cur_part;
@@ -89,7 +106,6 @@ selected_entry(-1), changed_keyboard(true)
         cur_part = cp_part;
         cur_char = cp_char;
     });
-    punct_menu.add(".", ADD_CHAR("."));
     punct_menu.add("(", [](Equation& e, int& cur_char, int& cur_part) -> void {
         const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, Part::Specialty::Paren, Part::Position::Start);
         const int cp_part = cur_part;
@@ -107,23 +123,7 @@ selected_entry(-1), changed_keyboard(true)
             e.find_matching_paren(cp_part);
         }
     });
-    punct_menu.add(")", [](Equation& e, int& cur_char, int& cur_part) -> void {
-        const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, Part::Specialty::Paren, Part::Position::End);
-        const int cp_part = cur_part;
-        if(!have_any_after)
-        {
-            e.add_part_at(cur_part, cur_char);
-        }
-        else
-        {
-            e.right_of(cur_part, cur_char);
-        }
-
-        if(e.parts[cp_part].meta.assoc == -1)
-        {
-            e.find_matching_paren(cp_part);
-        }
-    });
+    punct_menu.add("-", ADD_CHAR("-"));
 
     auto& func_menu = root_menu.entries[func_menu_id];
     func_menu.add("exp", [](Equation& e, int& cur_char, int& cur_part) -> void {
@@ -364,13 +364,19 @@ void Keyboard::handle_circle_pad(const int x, const int y)
     {
         if(x < -20 && at_x != 0)
         {
-            at_x--;
-            any_change = true;
+            if(auto t = osGetTime(); t - cursor_toggle_time > 300)
+            {
+                at_x -= 13;
+                any_change = true;
+            }
         }
         else if(x > 20 && (render_result.w > 320 && at_x != (render_result.w - 320)))
         {
-            any_change = true;
-            at_x++;
+            if(auto t = osGetTime(); t - cursor_toggle_time > 300)
+            {
+                at_x += 13;
+                any_change = true;
+            }
         }
 
         if(y < -20)
@@ -394,7 +400,7 @@ void Keyboard::handle_circle_pad(const int x, const int y)
     {
         if((x * x + y * y) > 20000)
         {
-            const int ang_deg = int((atan2f(y, x) * 180.0f / 3.14159f) + 720) % 360;
+            const int ang_deg = int((atan2f(x, y) * 180.0f / 3.14159f) + 720) % 360;
 
             const int partCount = current_menu->entries.size();
             const auto degrees_per_part_full = std::div(360, partCount);
