@@ -3,6 +3,7 @@
 #include "keyboard.h"
 #include "text.h"
 #include "sprites.h"
+#include "colors.h"
 
 void calculation_loop(void* arg)
 {
@@ -28,10 +29,6 @@ size_t Keyboard::Menu::add(std::string_view submenu, ActionType f)
     return o;
 }
 
-static constexpr u32 COLOR_HIDE = C2D_Color32(32, 32, 32, 64);
-static constexpr u32 COLOR_WHITE = C2D_Color32(255,255,255,255);
-static constexpr u32 COLOR_GRAY = C2D_Color32(160,160,160,255);
-static constexpr u32 COLOR_BLACK = C2D_Color32(0,0,0,255);
 #define REMOVE_ODD(v) (((v) & ~1) + (((v) & 1) << 1))
 #define MK_SUBTEX(w, h, w2, h2) {(w), REMOVE_ODD(h), 0.0f, 1.0f, ((w)/(w2)), 1.0f - (REMOVE_ODD(h)/(h2))}
 #define MK_SUBTEX_OFFSET(w, h, w2, h2, oX, oY) {(w), REMOVE_ODD(h), ((oX)/(w2)), 1.0f - (REMOVE_ODD(oY)/(h2)), ((w)/(w2)), 1.0f - (REMOVE_ODD(oY)/(h2)) - (REMOVE_ODD(h)/(h2))}
@@ -456,26 +453,25 @@ void Keyboard::handle_touch(const int x, const int y)
 
 void Keyboard::do_clears()
 {
-    constexpr u32 transparent_color = C2D_Color32(0,0,0,0);
     if(any_change)
     {
         auto t = current_tex.get_target();
-        C2D_TargetClear(t, transparent_color);
+        C2D_TargetClear(t, COLOR_TRANSPARENT);
     }
     if(changed_keyboard)
     {
         auto t = keyboard_tex.get_target();
-        C2D_TargetClear(t, transparent_color);
+        C2D_TargetClear(t, COLOR_TRANSPARENT);
     }
     if(redo_top)
     {
         auto t = memory_tex[0]->get_target();
-        C2D_TargetClear(t, transparent_color);
+        C2D_TargetClear(t, COLOR_TRANSPARENT);
     }
     if(redo_bottom)
     {
         auto t = memory_tex[1]->get_target();
-        C2D_TargetClear(t, transparent_color);
+        C2D_TargetClear(t, COLOR_TRANSPARENT);
     }
 }
 

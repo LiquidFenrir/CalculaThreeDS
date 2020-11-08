@@ -22,9 +22,9 @@ struct TextMapEntry {
 
 struct TextMap {
     using MapType = std::map<std::string_view, TextMapEntry>;
-    const MapType menu/*, equ*/;
+    const MapType menu, equ;
 
-    TextMap(MapType&& m /*, MapType&& e */) : menu(m)/*, equ(e)*/ { }
+    TextMap(MapType&& m, MapType&& e) : menu(m), equ(e) { }
 
     static inline std::unique_ptr<TextMap> char_to_sprite;
     static void generate(C2D_SpriteSheet sprites);

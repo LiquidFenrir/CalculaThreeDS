@@ -3,6 +3,7 @@
 #include <citro2d.h>
 
 #include "keyboard.h"
+#include "colors.h"
 
 #include <cstdio>
 
@@ -30,10 +31,6 @@ int main(int argc, char** argv)
     C2D_SpriteSheet sprites = C2D_SpriteSheetLoad("romfs:/gfx/sprites.t3x");
     romfsExit();
 
-    constexpr u32 black_color = C2D_Color32(0,0,0,255);
-    constexpr u32 clear_color = C2D_Color32(255,255,255,255);
-    constexpr u32 fade_color = C2D_Color32(80,80,80,100);
-
     Keyboard kb(sprites);
     constexpr u32 CIRCLE_PAD_VALUES = (KEY_CPAD_UP | KEY_CPAD_DOWN | KEY_CPAD_LEFT | KEY_CPAD_RIGHT);
 
@@ -53,8 +50,8 @@ int main(int argc, char** argv)
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
 
-        C2D_TargetClear(top, black_color);
-        C2D_TargetClear(bottom, clear_color);
+        C2D_TargetClear(top, COLOR_BLACK);
+        C2D_TargetClear(bottom, COLOR_WHITE);
 
         if(!calculating)
         {
@@ -70,7 +67,7 @@ int main(int argc, char** argv)
         
         if(calculating)
         {
-            C2D_DrawRectSolid(0, 0, 1.0f, 400, 240, fade_color);
+            C2D_DrawRectSolid(0, 0, 1.0f, 400, 240, COLOR_FADE);
         }
 
         C2D_SceneBegin(bottom);
@@ -79,7 +76,7 @@ int main(int argc, char** argv)
 
         if(calculating)
         {
-            C2D_DrawRectSolid(0, 0, 0.875f, 320, 240, fade_color);
+            C2D_DrawRectSolid(0, 0, 0.875f, 320, 240, COLOR_FADE);
             kb.draw_loader();
         }
 

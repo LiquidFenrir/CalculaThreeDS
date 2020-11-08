@@ -1,15 +1,28 @@
 #include "equation.h"
 #include "sprites.h"
+#include "text.h"
+#include "colors.h"
 #include <algorithm>
 #include <climits>
 
 void Number::render(C2D_SpriteSheet sprites) const
 {
-    auto img = C2D_SpriteSheetGetImage(sprites, sprites_0_idx);
-    constexpr u32 black_color = C2D_Color32(0,0,0,255);
+    static char floattextbuf[64];
+    std::snprintf(floattextbuf, 63, "%.6g", value);
+
     C2D_ImageTint text_tint;
-    C2D_PlainImageTint(&text_tint, black_color, 1.0f);
-    C2D_DrawImageAt(img, 400 - img.subtex->width, Equation::EQU_REGION_HEIGHT + (40 - img.subtex->height)/2, 0.0f, &text_tint);
+    C2D_PlainImageTint(&text_tint, COLOR_BLACK, 1.0f);
+    C2D_DrawRectSolid(0, Equation::EQU_REGION_HEIGHT, 0.875f, 400, 40, COLOR_GRAY);
+
+    std::string_view sv(floattextbuf);
+    const int w = sv.size() * 13;
+    int x = 0;
+    for(const char c : sv)
+    {
+        const auto& img = TextMap::char_to_sprite->equ.at(std::string_view(&c, 1)).sprites.front();
+        C2D_DrawImageAt(img, 400 - w + x, Equation::EQU_REGION_HEIGHT + (40 - img.subtex->height)/2, 1.0f, &text_tint);
+        x += 13;
+    }
 }
 
 Equation::Equation() : parts(3)
@@ -213,14 +226,6 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
 
     C2D_Image empty_img = C2D_SpriteSheetGetImage(sprites, sprites_empty_but_clickable_idx);
 
-    C2D_Image pi_img = C2D_SpriteSheetGetImage(sprites, sprites_pi_idx);
-    
-    C2D_Image add_img = C2D_SpriteSheetGetImage(sprites, sprites_add_idx);
-    C2D_Image sub_img = C2D_SpriteSheetGetImage(sprites, sprites_sub_idx);
-    C2D_Image mul_img = C2D_SpriteSheetGetImage(sprites, sprites_mul_idx);
-
-    C2D_Image dec_img = C2D_SpriteSheetGetImage(sprites, sprites_decimals_idx);
-
     C2D_Image lpa_sprites[] = {
         C2D_SpriteSheetGetImage(sprites, sprites_lparen_begin_idx),
         C2D_SpriteSheetGetImage(sprites, sprites_lparen_middle_idx),
@@ -233,23 +238,10 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
         C2D_SpriteSheetGetImage(sprites, sprites_rparen_end_idx),
     };
 
-    C2D_Image digit_imgs[10];
-    for(int i = 0; i < 10; ++i)
-    {
-        digit_imgs[i] = C2D_SpriteSheetGetImage(sprites, sprites_0_idx + i);
-    }
-    C2D_Image letters_imgs[26];
-    for(int i = 0; i < 26; ++i)
-    {
-        letters_imgs[i] = C2D_SpriteSheetGetImage(sprites, sprites_a_idx + i);
-    }
-
-    constexpr u32 black_color = C2D_Color32(0,0,0,255);
     C2D_ImageTint text_tint;
-    C2D_PlainImageTint(&text_tint, black_color, 1.0f);
-    constexpr u32 gray_color = C2D_Color32(128,128,128,255);
+    C2D_PlainImageTint(&text_tint, COLOR_BLACK, 1.0f);
     C2D_ImageTint temp_tint;
-    C2D_PlainImageTint(&temp_tint, gray_color, 1.0f);
+    C2D_PlainImageTint(&temp_tint, COLOR_GRAY, 1.0f);
 
     const auto draw_paren = [&](const C2D_Image* sprites, const int vertical_offset, const int y_start, const int y_end, const bool tmp) -> void {
         const int span = (y_start - y_end) - 2;
@@ -260,7 +252,8 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
         C2D_DrawImageAt(sprites[0], x, pixel_y, 0.0f, tnt);
         const int middle_y = pixel_y + sprites[0].subtex->height;
         C2D_DrawImageAt(sprites[1], x, middle_y, 0.0f, tnt, 1.0f, span_pixels);
-        C2D_DrawImageAt(sprites[2], x, middle_y + span_pixels, 0.0f, tnt);
+        const int bottom_y = middle_y + span_pixels;
+        C2D_DrawImageAt(sprites[2], x, bottom_y, 0.0f, tnt);
     };
     const auto set_cursor = [&](const int y) -> void {
         out.cursor_x = info.get_x();
@@ -284,9 +277,9 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
             pos.part = current_idx;
             if(part.value.empty())
             {
-                const auto& img = empty_img;
                 if(info.can_draw(vertical_offset))
                 {
+                    const auto& img = empty_img;
                     C2D_DrawImageAt(img, info.get_x(), info.get_y(vertical_offset), 0.0f, &text_tint);
 
                     if(screen)
@@ -323,40 +316,10 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                 int char_idx = 0;
                 for(const char c : part.value)
                 {
-                    const C2D_Image* img = nullptr;
-                    switch(c)
+                    if(info.can_draw(vertical_offset))
                     {
-                        case 'P':
-                            img = &pi_img;
-                            break;
-                        case '+':
-                            img = &add_img;
-                            break;
-                        case '-':
-                            img = &sub_img;
-                            break;
-                        case '*':
-                            img = &mul_img;
-                            break;
-                        case '.':
-                            img = &dec_img;
-                            break;
-                        default:
-                            break;
-                    }
-
-                    if('a' <= c && c <= 'z')
-                    {
-                        img = &letters_imgs[c - 'a'];
-                    }
-                    else if('0' <= c && c <= '9')
-                    {
-                        img = &digit_imgs[c - '0'];
-                    }
-
-                    if(info.can_draw(vertical_offset) && img)
-                    {
-                        C2D_DrawImageAt(*img, info.get_x(), info.get_y(vertical_offset), 0.0f, &text_tint);
+                        const auto& img = TextMap::char_to_sprite->equ.at(std::string_view(&c, 1)).sprites.front();
+                        C2D_DrawImageAt(img, info.get_x(), info.get_y(vertical_offset), 0.0f, &text_tint);
                         if(screen)
                         {
                             pos.pos = char_idx;
@@ -441,7 +404,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                 {
                     const auto& middle_size = part_sizes[part_size.associated];
                     const int max_width = std::max(middle_size.content_width, part_size.content_width);
-                    C2D_DrawRectSolid(info.get_x(), info.get_y(vertical_offset) + 24 / 2 - 1, 0.0f, max_width * 13, 2.0f, black_color);
+                    C2D_DrawRectSolid(info.get_x(), info.get_y(vertical_offset) + 24 / 2 - 1, 0.0f, max_width * 13, 2.0f, COLOR_BLACK);
                     info.current_x += ((max_width - part_size.content_width) * 13)/2; // top align
                 }
                 else if(part.meta.position == Part::Position::Middle)

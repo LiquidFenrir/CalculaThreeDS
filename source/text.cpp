@@ -3,7 +3,7 @@
 
 void TextMap::generate(C2D_SpriteSheet sprites)
 {
-    MapType menu/*, equ*/;
+    MapType menu, equ;
 
     // menu
 
@@ -188,5 +188,41 @@ void TextMap::generate(C2D_SpriteSheet sprites)
     }));
     }
 
-    char_to_sprite = std::make_unique<TextMap>(std::move(menu)/*, std::move(equ)*/);
+    static char arr_dig[2 * 10] = {0};
+    for(int i = 0; i < 10; ++i)
+    {
+        char* p = &arr_dig[i * 2];
+        p[0] = '0' + i;
+        equ.insert_or_assign(p, TextMapEntry({
+            C2D_SpriteSheetGetImage(sprites, sprites_0_idx + i)
+        }));
+    }
+
+    static char arr_let[2 * 26] = {0};
+    for(int i = 0; i < 26; ++i)
+    {
+        char* p = &arr_let[i * 2];
+        p[0] = 'a' + i;
+        equ.insert_or_assign(p, TextMapEntry({
+            C2D_SpriteSheetGetImage(sprites, sprites_a_idx + i)
+        }));
+    }
+    
+    equ.insert_or_assign("P", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_pi_idx)
+    }));
+    equ.insert_or_assign("+", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_add_idx)
+    }));
+    equ.insert_or_assign("-", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_sub_idx)
+    }));
+    equ.insert_or_assign("*", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_mul_idx)
+    }));
+    equ.insert_or_assign(".", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_decimals_idx)
+    }));
+
+    char_to_sprite = std::make_unique<TextMap>(std::move(menu), std::move(equ));
 }
