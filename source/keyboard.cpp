@@ -352,23 +352,16 @@ void Keyboard::handle_buttons(const u32 kDown, const u32 kDownRepeat)
 }
 void Keyboard::handle_circle_pad(const int x, const int y)
 {
-    if(selection == SelectionType::Equation)
-    {
+    const auto do_scroll = [](int& at_x, int& at_y, const int x, const int y,const int w, const Equation::RenderResult& render_result, bool& any_change) -> void {
         if(x < -20 && at_x != 0)
         {
-            if(auto t = osGetTime(); t - cursor_toggle_time > 300)
-            {
-                at_x -= 13;
-                any_change = true;
-            }
+            at_x -= 2;
+            any_change = true;
         }
-        else if(x > 20 && (render_result.w > 320 && at_x != (render_result.w - 320)))
+        else if(x > 20 && (render_result.w > w && at_x < (render_result.w - w)))
         {
-            if(auto t = osGetTime(); t - cursor_toggle_time > 300)
-            {
-                at_x += 13;
-                any_change = true;
-            }
+            at_x += 2;
+            any_change = true;
         }
 
         if(y < -20)
@@ -386,6 +379,19 @@ void Keyboard::handle_circle_pad(const int x, const int y)
                 any_change = true;
                 at_y += 2;
             }
+        }
+    };
+
+    if(selection == SelectionType::Equation)
+    {
+        do_scroll(at_x, at_y, x, y, 320, render_result, any_change);
+    }
+    else if(selection == SelectionType::Memory)
+    {
+        if(!memory.empty())
+        {
+            auto& line = memory[memory.size() - memory_index - 1];
+            do_scroll(line.at_x, line.at_y, x, y, 400, line.render_res, memory_index == memory_scroll ? redo_bottom : redo_top);
         }
     }
     else if(selection == SelectionType::Keyboard)
@@ -475,13 +481,12 @@ void Keyboard::do_clears()
 
 void Keyboard::update_memory(C2D_SpriteSheet sprites)
 {
-    const int top_idx = memory.size() - memory_scroll  - 1;
     if(redo_top)
     {
         redo_top = false;
         auto t = memory_tex[0]->get_target();
         C2D_SceneBegin(t);
-        auto& mem_line = memory[top_idx - 1];
+        auto& mem_line = memory[memory.size() - memory_scroll - 2];
         mem_line.render_res = mem_line.equation->render_memory(mem_line.at_x, mem_line.at_y, sprites);
         mem_line.result.render(sprites);
     }
@@ -490,7 +495,7 @@ void Keyboard::update_memory(C2D_SpriteSheet sprites)
         redo_bottom = false;
         auto t = memory_tex[1]->get_target();
         C2D_SceneBegin(t);
-        auto& mem_line = memory[top_idx];
+        auto& mem_line = memory[memory.size() - memory_scroll - 1];
         mem_line.render_res = mem_line.equation->render_memory(mem_line.at_x, mem_line.at_y, sprites);
         mem_line.result.render(sprites);
     }
@@ -591,7 +596,7 @@ void Keyboard::draw_memory(C2D_SpriteSheet sprites) const
         C2D_DrawImageAt(C2D_Image{t.get_tex(), &EQUATION_MEM_SUBTEX}, 0.0f, y, 0.25f);
         C2D_DrawImageAt(C2D_Image{t.get_tex(), &ANSWER_MEM_SUBTEX}, 0.0f, y + Equation::EQU_REGION_HEIGHT, 0.25f);
 
-        if(l.render_res.w > 400 && l.at_x != (l.render_res.w - 400))
+        if(l.render_res.w > 400 && l.at_x < (l.render_res.w - 400))
         {
             const auto spr = C2D_SpriteSheetGetImage(sprites, sprites_arrow_right_idx);
             C2D_DrawImageAt(spr, 400 - spr.subtex->width, y + (Equation::EQU_REGION_HEIGHT - spr.subtex->height) / 2.0f, 0.5f, &arrow_tint);
@@ -628,7 +633,7 @@ void Keyboard::draw_memory(C2D_SpriteSheet sprites) const
     {
         if(memory.size() >= 2)
         {
-            C2D_DrawRectSolid(0, (1 + (memory_scroll - memory_index)) * 120, 0.75f, 400, 120, COLOR_HIDE);
+            C2D_DrawRectSolid(0, (memory_index - memory_scroll) * 120, 0.75f, 400, 120, COLOR_HIDE);
         }
     }
     else
@@ -655,7 +660,7 @@ void Keyboard::draw(C2D_SpriteSheet sprites) const
 
     C2D_ImageTint arrow_tint;
     C2D_PlainImageTint(&arrow_tint, C2D_Color32(0, 0, 0, 128), 1.0f);
-    if(render_result.w > 320 && at_x != (render_result.w - 320))
+    if(render_result.w > 320 && at_x < (render_result.w - 320))
     {
         const auto spr = C2D_SpriteSheetGetImage(sprites, sprites_arrow_right_idx);
         C2D_DrawImageAt(spr, 320 - spr.subtex->width, (Equation::EQU_REGION_HEIGHT - spr.subtex->height) / 2.0f, 0.5f, &arrow_tint);
