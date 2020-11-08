@@ -46,7 +46,8 @@ struct Part {
         Equation = 1,
         Fraction = 2,
         Exponent = 4,
-        Paren = 8,
+        Absolute = 8,
+        Paren = 16,
     };
     enum class Position : unsigned char {
         None = 0,
@@ -99,26 +100,31 @@ inline bool check_pos_is(Part::Position v, Part::Position other)
     }
 }
 
-inline constexpr int EQU_REGION_HEIGHT = 72;
 struct PartPos {
     int part{-1}, pos{-1};
 };
+struct Number {
+    float value{};
+    void render(C2D_SpriteSheet sprites) const;
+};
+
 struct Equation {
     struct RenderResult {
         int w, min_y, max_y;
         int cursor_x, cursor_y;
         bool cursor_visible;
-        std::array<PartPos, 320 * EQU_REGION_HEIGHT> screen;
     };
-    RenderResult render(const int x, const int y, const int editing_part, const int editing_char, C2D_SpriteSheet sprites);
-    std::vector<Part> parts;
+    static inline constexpr int EQU_REGION_HEIGHT = 80;
 
-    static inline PartPos clipboard_start = {-1, -1}, clipboard_end = {-1, -1};
-    static inline std::vector<Part> clipboard;
+    RenderResult render(const int x, const int y, const int editing_part, const int editing_char, C2D_SpriteSheet sprites, PartPos* screen);
+    RenderResult render_memory(const int x, const int y, C2D_SpriteSheet sprites);
+    std::vector<Part> parts;
 
     Equation();
     void optimize();
-    void find_matching_paren(const int paren_pos);
+    Number calculate(const Number& input);
+
+    void find_matching(const int original_pos, const Part::Specialty special);
     std::pair<bool, bool> add_part_at(int& current_part_id, int& at_position, const Part::Specialty special = Part::Specialty::None, const Part::Position position = Part::Position::None, const int assoc = -1);
     bool remove_at(int& current_part_id, int& at_position);
     bool left_of(int& current_part_id, int& at_position);

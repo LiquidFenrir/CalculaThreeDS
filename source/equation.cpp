@@ -3,6 +3,15 @@
 #include <algorithm>
 #include <climits>
 
+void Number::render(C2D_SpriteSheet sprites) const
+{
+    auto img = C2D_SpriteSheetGetImage(sprites, sprites_0_idx);
+    constexpr u32 black_color = C2D_Color32(0,0,0,255);
+    C2D_ImageTint text_tint;
+    C2D_PlainImageTint(&text_tint, black_color, 1.0f);
+    C2D_DrawImageAt(img, 400 - img.subtex->width, Equation::EQU_REGION_HEIGHT + (40 - img.subtex->height)/2, 0.0f, &text_tint);
+}
+
 Equation::Equation() : parts(3)
 {
     parts[0].meta.assoc = 2;
@@ -22,13 +31,14 @@ Equation::Equation() : parts(3)
 struct RenderInfo {
     int current_x;
     const int min_x, max_x, center_y;
+    const int height;
     const int editing_part;
     const int editing_char;
 
     bool can_draw(const int vertical_offset) const
     {
         const bool x_correct = (min_x - (13 -1)) <= current_x && current_x < max_x;
-        const bool y_correct = -(EQU_REGION_HEIGHT/2 + 24/2) < (vertical_offset - center_y) && (vertical_offset - center_y) <= (EQU_REGION_HEIGHT/2 + 24);
+        const bool y_correct = -(height/2 + 24/2) < (vertical_offset - center_y) && (vertical_offset - center_y) <= (height/2 + 24);
         return x_correct && y_correct;
     }
     int get_x() const
@@ -37,7 +47,7 @@ struct RenderInfo {
     }
     int get_y(const int vertical_offset) const
     {
-        return center_y - vertical_offset + EQU_REGION_HEIGHT/2 - 24/2;
+        return center_y - vertical_offset + height/2 - 24/2;
     }
 };
 
@@ -193,7 +203,7 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
 
     id_stack.clear();
 }
-static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equation::RenderResult& out, C2D_SpriteSheet sprites)
+static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equation::RenderResult& out, PartPos* screen, C2D_SpriteSheet sprites)
 {
     static std::vector<RenderPart> part_sizes;
     part_sizes.resize(parts.size());
@@ -255,7 +265,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
     const auto set_cursor = [&](const int y) -> void {
         out.cursor_x = info.get_x();
         out.cursor_y = y;
-        if(!(out.cursor_x <= -2 || out.cursor_x >= (320 - 2) || out.cursor_y <= (-24) || out.cursor_y >= EQU_REGION_HEIGHT))
+        if(!(out.cursor_x <= -2 || out.cursor_x >= (320 - 2) || out.cursor_y <= (-24) || out.cursor_y >= Equation::EQU_REGION_HEIGHT))
         {
             out.cursor_visible = true;
         }
@@ -278,19 +288,23 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                 if(info.can_draw(vertical_offset))
                 {
                     C2D_DrawImageAt(img, info.get_x(), info.get_y(vertical_offset), 0.0f, &text_tint);
-                    pos.pos = 0;
-                    for(int y = 0; y < 24; y++)
+
+                    if(screen)
                     {
-                        const int actual_y = info.get_y(vertical_offset) + y;
-                        if(actual_y >= 0 && actual_y < EQU_REGION_HEIGHT)
+                        pos.pos = 0;
+                        for(int y = 0; y < 24; y++)
                         {
-                            const int y_part = actual_y * 320;
-                            for(int x = 0; x < 13; x++)
+                            const int actual_y = info.get_y(vertical_offset) + y;
+                            if(actual_y >= 0 && actual_y < Equation::EQU_REGION_HEIGHT)
                             {
-                                const int actual_x = info.get_x() + x;
-                                if(actual_x >= 0 && actual_x < 320)
+                                const int y_part = actual_y * 320;
+                                for(int x = 0; x < 13; x++)
                                 {
-                                    out.screen[actual_x + y_part] = pos;
+                                    const int actual_x = info.get_x() + x;
+                                    if(actual_x >= 0 && actual_x < 320)
+                                    {
+                                        screen[actual_x + y_part] = pos;
+                                    }
                                 }
                             }
                         }
@@ -343,19 +357,22 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                     if(info.can_draw(vertical_offset) && img)
                     {
                         C2D_DrawImageAt(*img, info.get_x(), info.get_y(vertical_offset), 0.0f, &text_tint);
-                        pos.pos = char_idx;
-                        for(int y = 0; y < 24; y++)
+                        if(screen)
                         {
-                            const int actual_y = info.get_y(vertical_offset) + y;
-                            if(actual_y >= 0 && actual_y < EQU_REGION_HEIGHT)
+                            pos.pos = char_idx;
+                            for(int y = 0; y < 24; y++)
                             {
-                                const int y_part = actual_y * 320;
-                                for(int x = 0; x < 13; x++)
+                                const int actual_y = info.get_y(vertical_offset) + y;
+                                if(actual_y >= 0 && actual_y < Equation::EQU_REGION_HEIGHT)
                                 {
-                                    const int actual_x = info.get_x() + x;
-                                    if(actual_x >= 0 && actual_x < 320)
+                                    const int y_part = actual_y * 320;
+                                    for(int x = 0; x < 13; x++)
                                     {
-                                        out.screen[actual_x + y_part] = pos;
+                                        const int actual_x = info.get_x() + x;
+                                        if(actual_x >= 0 && actual_x < 320)
+                                        {
+                                            screen[actual_x + y_part] = pos;
+                                        }
                                     }
                                 }
                             }
@@ -395,19 +412,22 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
 
                 draw_paren(sprs, vertical_offset, part_size.paren_y_start, part_size.paren_y_end, part.meta.tmp);
 
-                const int h = ((part_size.paren_y_start - part_size.paren_y_end) * 24 / 2) + 1;
-                for(int y = 0; y < h; y++)
+                if(screen)
                 {
-                    const int actual_y = info.get_y(vertical_offset) - ((part_size.paren_y_start - 1) * 24 / 2) + y;
-                    if(actual_y >= 0 && actual_y < EQU_REGION_HEIGHT)
+                    const int h = ((part_size.paren_y_start - part_size.paren_y_end) * 24 / 2) + 1;
+                    for(int y = 0; y < h; y++)
                     {
-                        const int y_part = actual_y * 320;
-                        for(int x = 0; x < 13; x++)
+                        const int actual_y = info.get_y(vertical_offset) - ((part_size.paren_y_start - 1) * 24 / 2) + y;
+                        if(actual_y >= 0 && actual_y < Equation::EQU_REGION_HEIGHT)
                         {
-                            const int actual_x = info.get_x() + x;
-                            if(actual_x >= 0 && actual_x < 320)
+                            const int y_part = actual_y * 320;
+                            for(int x = 0; x < 13; x++)
                             {
-                                out.screen[actual_x + y_part] = pos;
+                                const int actual_x = info.get_x() + x;
+                                if(actual_x >= 0 && actual_x < 320)
+                                {
+                                    screen[actual_x + y_part] = pos;
+                                }
                             }
                         }
                     }
@@ -454,16 +474,31 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
     part_sizes.clear();
 }
 
-Equation::RenderResult Equation::render(const int x, const int y,const int editing_part, const int editing_char, C2D_SpriteSheet sprites)
+Equation::RenderResult Equation::render(const int x, const int y, const int editing_part, const int editing_char, C2D_SpriteSheet sprites, PartPos* screen)
 {
-    RenderResult out{0,0,0,-1,-1, false, {}};
+    RenderResult out{0,0,0,-1,-1, false};
     RenderInfo info{
         0,
         x, x + 320, y,
+        Equation::EQU_REGION_HEIGHT,
         editing_part,
         editing_char,
     };
-    render_parts(parts, info, out, sprites);
+    render_parts(parts, info, out, screen, sprites);
+    return out;
+}
+
+Equation::RenderResult Equation::render_memory(const int x, const int y, C2D_SpriteSheet sprites)
+{
+    RenderResult out{0,0,0,-1,-1, false};
+    RenderInfo info{
+        0,
+        x, x + 400, y, 
+        Equation::EQU_REGION_HEIGHT,
+        -1,
+        -1,
+    };
+    render_parts(parts, info, out, nullptr, sprites);
     return out;
 }
 
@@ -485,16 +520,26 @@ void Equation::optimize()
     parts = std::move(tmp);
 }
 
-void Equation::find_matching_paren(const int paren_pos)
+Number Equation::calculate(const Number& input)
+{
+    return input;
+}
+
+void Equation::find_matching(const int original_pos, const Part::Specialty special)
 {
     using HelperType = int(*)(Equation&, const int);
-    const auto do_find = [](Equation& e, const int paren_pos, int inc_on_start, HelperType get_following, HelperType get_append_pos) {
-        const auto do_append = [](Equation& e, const int p, const int paren_pos, HelperType get_append_pos) -> void {
+    const auto do_find = [](Equation& e, const int original_pos, const Part::Specialty special, int inc_on_start, HelperType get_following, HelperType get_append_pos) {
+        const auto do_append = [](Equation& e, const int p, const int original_pos, const Part::Specialty special, HelperType get_append_pos) -> void {
             int char_position = get_append_pos(e, p);
             int part_id = p;
-            const auto [have_any_before, have_any_after] = e.add_part_at(part_id, char_position, Part::Specialty::Paren, !e.parts[paren_pos].meta.position, paren_pos);
-            e.parts[part_id].meta.tmp = true;
-            e.parts[paren_pos].meta.assoc = part_id;
+            const auto [have_any_before, have_any_after] = e.add_part_at(part_id, char_position, special, !e.parts[original_pos].meta.position, original_pos);
+            
+            if(special == Part::Specialty::Paren)
+            {
+                e.parts[part_id].meta.tmp = true;
+            }
+
+            e.parts[original_pos].meta.assoc = part_id;
             if(!have_any_after)
             {
                 e.add_part_at(part_id, char_position);
@@ -502,7 +547,7 @@ void Equation::find_matching_paren(const int paren_pos)
         };
 
         int current_count = 0;
-        int prev_pos = paren_pos;
+        int prev_pos = original_pos;
         int pos = get_following(e, prev_pos);
 
         while(true) // will eventually hit a part
@@ -519,7 +564,7 @@ void Equation::find_matching_paren(const int paren_pos)
 
             if(current_count < 0)
             {
-                do_append(e, prev_pos, paren_pos, get_append_pos);
+                do_append(e, prev_pos, original_pos, special, get_append_pos);
                 return;
             }
 
@@ -528,10 +573,10 @@ void Equation::find_matching_paren(const int paren_pos)
         }
     };
 
-    if(parts[paren_pos].meta.position == Part::Position::Start)
+    if(parts[original_pos].meta.position == Part::Position::Start)
     {
         // go forward
-        do_find(*this, paren_pos, +1,
+        do_find(*this, original_pos, special, +1,
             [](Equation& e, const int pos) -> int {
                 return e.parts[pos].meta.next;
             },
@@ -540,10 +585,10 @@ void Equation::find_matching_paren(const int paren_pos)
             }
         );
     }
-    else if(parts[paren_pos].meta.position == Part::Position::End)
+    else if(parts[original_pos].meta.position == Part::Position::End)
     {
         // go backwards
-        do_find(*this, paren_pos, -1,
+        do_find(*this, original_pos, special, -1,
             [](Equation& e, const int pos) -> int {
                 return e.parts[pos].meta.before;
             },
@@ -561,7 +606,7 @@ std::pair<bool, bool> Equation::add_part_at(int& current_part_id, int& at_positi
         if(special == Part::Specialty::Paren && next_part.meta.special == Part::Specialty::Paren && next_part.meta.position == position && next_part.meta.tmp)
         {
             next_part.meta.tmp = false;
-            current_part_id = next_part.meta.next;
+            current_part_id = parts[current_part_id].meta.next;
             at_position = 0;
             return {true, true}; // if it's a paren, it has to have a text part after
         }
@@ -637,7 +682,93 @@ bool Equation::remove_at(int& current_part_id, int& at_position)
 {
     if(at_position == 0)
     {
-        return false;
+        const auto merge_parts = [this](Part::Meta start_meta, Part::Meta end_meta) -> std::pair<int, int> {
+            const int before_part_start_id = start_meta.before;
+            const int after_part_start_id = start_meta.next;
+            const int before_part_end_id = end_meta.before;
+            const int after_part_end_id = end_meta.next;
+
+            const int part_id = before_part_start_id;
+            const int at_char = parts[part_id].value.size();
+
+            /*
+             * if after_part_start_id != before_part_end_id:
+             * equ_start -> A -> start -> B -> ... -> C -> end -> D -> equ_end
+             * append D to C
+             * make C's next into D's next
+             * make C's new next's before into C
+             * equ_start -> A -> start -> B -> ... -> CD -> equ_end
+             * append B to A
+             * make A's next into B's next
+             * make CD's next's before into C
+             * equ_start -> A -> start -> B -> ... -> CD -> equ_end
+             */
+
+            /*
+             * if after_part_start_id == before_part_end_id:
+             * equ_start -> A -> start -> B -> end -> C -> equ_end
+             * append C to B
+             * make B's next into C's next
+             * make B's new next's before into B
+             * equ_start -> A -> start -> BC -> equ_end
+             * append BC to A
+             * make A's next into BC's next
+             * make A's next's before into A
+             * equ_start -> ABC -> equ_end
+             */
+
+            Part::Meta after_end_meta = parts[after_part_end_id].meta;
+
+            parts[before_part_end_id].value.append(parts[after_part_end_id].value);
+            parts[before_part_end_id].meta.next = after_end_meta.next;
+            parts[after_end_meta.next].meta.before = before_part_end_id;
+
+            Part::Meta after_start_meta = parts[after_part_start_id].meta;
+
+            parts[before_part_start_id].value.append(parts[after_part_start_id].value);
+            parts[before_part_start_id].meta.next = after_start_meta.next;
+            parts[after_start_meta.next].meta.before = before_part_start_id;
+
+            return {part_id, at_char};
+        };
+
+        Part::Meta start_meta = parts[parts[current_part_id].meta.before].meta;
+        if(start_meta.special == Part::Specialty::Equation) // Don't allow deleting the first chunk
+        {
+            return false;
+        }
+        else if(start_meta.special == Part::Specialty::Fraction)
+        {
+            if(start_meta.position != Part::Position::Start)
+            {
+                return false;
+            }
+
+            Part::Meta middle_meta = parts[start_meta.assoc].meta;
+            Part::Meta end_meta = parts[middle_meta.assoc].meta;
+
+            merge_parts(middle_meta, end_meta);
+
+            const int before_part_start_id = start_meta.before;
+
+            const int part_id = before_part_start_id;
+            const int at_char = parts[part_id].value.size();
+
+            Part::Meta after_start_meta = parts[start_meta.next].meta;
+
+            parts[before_part_start_id].value.append(parts[start_meta.next].value);
+            parts[before_part_start_id].meta.next = after_start_meta.next;
+            parts[after_start_meta.next].meta.before = before_part_start_id;
+
+            current_part_id = part_id;
+            at_position = at_char;
+            return true;
+        }
+        else
+        {
+            std::tie(current_part_id, at_position) = merge_parts(start_meta, parts[start_meta.assoc].meta);
+            return true;
+        }
     }
     else
     {
