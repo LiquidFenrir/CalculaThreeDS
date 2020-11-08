@@ -621,12 +621,12 @@ void Keyboard::draw_memory(C2D_SpriteSheet sprites) const
 
     if(memory.size() >= 2)
     {
-        draw_mem_at(*memory_tex[0], 0, memory[memory_scroll + 1]);
+        draw_mem_at(*memory_tex[0], 0, memory[memory.size() - memory_scroll - 2]);
     }
 
     if(memory.size() >= 1)
     {
-        draw_mem_at(*memory_tex[1], 120, memory[memory_scroll]);
+        draw_mem_at(*memory_tex[1], 120, memory[memory.size() - memory_scroll - 1]);
     }
 
     if(selection == SelectionType::Memory)
