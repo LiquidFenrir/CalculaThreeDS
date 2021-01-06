@@ -21,12 +21,12 @@ struct TextMapEntry {
 };
 
 struct TextMap {
-    using MapType = std::map<std::string_view, TextMapEntry>;
-    const MapType menu, equ;
+    std::map<std::string_view, TextMapEntry> menu;
+    std::map<std::string_view, C2D_Image> equ;
 
-    TextMap(MapType&& m, MapType&& e) : menu(m), equ(e) { }
+    TextMap(decltype(menu)&& m, decltype(equ)&& e) : menu(std::move(m)), equ(std::move(e)) { }
 
-    static inline std::unique_ptr<TextMap> char_to_sprite;
+    static inline std::unique_ptr<const TextMap> char_to_sprite;
     static void generate(C2D_SpriteSheet sprites);
 };
 

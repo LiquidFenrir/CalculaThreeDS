@@ -1,47 +1,84 @@
 #include <algorithm>
 #include <cmath>
+#include <array>
 #include "keyboard.h"
 #include "text.h"
 #include "sprites.h"
 #include "colors.h"
 
-void calculation_loop(void* arg)
-{
-    auto kb = static_cast<Keyboard*>(arg);
-    while(!kb->kill_thread.load())
+struct KeyboardScreen {
+    enum class Type : int {
+        Basic,
+        Functions,
+
+        END
+    };
+
+    static void prev(int& v)
     {
-        LightEvent_Wait(&kb->wakeup);
-        if(kb->kill_thread.load()) break;
-
-        fprintf(stderr, "optimize\n");
-        kb->current_eq->optimize();
-        fprintf(stderr, "calc\n");
-        kb->result = kb->current_eq->calculate(kb->memory.empty() ? Number{} : kb->memory.back().result);
-        fprintf(stderr, "done\n");
-        kb->stop_calculating();
+        v = (v + static_cast<int>(Type::END) - 1) % static_cast<int>(Type::END);
     }
-}
+    static void next(int& v)
+    {
+        v = (v + 1) % static_cast<int>(Type::END);
+    }
 
-size_t Keyboard::Menu::add(std::string_view submenu, ActionType f)
+    constexpr static inline int W = 5;
+    constexpr static inline int H = 4;
+    std::string_view name;
+    std::array<std::array<std::string_view, KeyboardScreen::W>, KeyboardScreen::H> buttons;
+    struct Action {
+        using F_t = bool(*)(Equation&, int&, int&);
+        constexpr Action() : f(nullptr) { }
+        constexpr Action& operator=(const F_t& f_) { f = f_; return *this; }
+
+        constexpr bool operator()(Equation& e, int& cur_char, int& cur_part) const
+        {
+            if(f)
+            {
+                return f(e, cur_char, cur_part);
+            }
+            return false;
+        }
+        constexpr operator bool() const
+        {
+            return f != nullptr;
+        }
+private:
+        F_t f;
+    };
+    std::array<std::array<Action, KeyboardScreen::W>, KeyboardScreen::H> actions;
+};
+
+static constexpr int EQU_GAP_END = (240 - (KeyboardScreen::H * 36));
+static constexpr int EQU_GAP_HEIGHT = EQU_GAP_END - Equation::EQU_REGION_HEIGHT;
+
+static bool complete_equ(Equation& e, int& cur_char, int& cur_part)
 {
-    const size_t o = entries.size();
-    entries.emplace_back(this, submenu, f);
-    return o;
+    return false;
 }
-
-#define REMOVE_ODD(v) (((v) & ~1) + (((v) & 1) << 1))
-#define MK_SUBTEX(w, h, w2, h2) {(w), REMOVE_ODD(h), 0.0f, 1.0f, ((w)/(w2)), 1.0f - (REMOVE_ODD(h)/(h2))}
-#define MK_SUBTEX_OFFSET(w, h, w2, h2, oX, oY) {(w), REMOVE_ODD(h), ((oX)/(w2)), 1.0f - (REMOVE_ODD(oY)/(h2)), ((w)/(w2)), 1.0f - (REMOVE_ODD(oY)/(h2)) - (REMOVE_ODD(h)/(h2))}
-static constexpr Tex3DS_SubTexture EQUATION_SUBTEX = MK_SUBTEX(320, Equation::EQU_REGION_HEIGHT, 512.0f, 128.0f);
-static constexpr Tex3DS_SubTexture EQUATION_MEM_SUBTEX = MK_SUBTEX_OFFSET(400, Equation::EQU_REGION_HEIGHT, 512.0f, 128.0f, 0, 0);
-static constexpr Tex3DS_SubTexture ANSWER_MEM_SUBTEX = MK_SUBTEX_OFFSET(400, 120 - Equation::EQU_REGION_HEIGHT, 512.0f, 128.0f, 0, Equation::EQU_REGION_HEIGHT);
-static constexpr Tex3DS_SubTexture KEYBOARD_SUBTEX = MK_SUBTEX(320, 240 - (Equation::EQU_REGION_HEIGHT + 1), 512.0f, 256.0f);
-#undef MK_SUBTEX_OFFSET
-#undef MK_SUBTEX
-#undef REMOVE_ODD
-static C2D_ImageTint YES_TINT, NO_TINT, TEXT_YES_TINT, TEXT_NO_TINT;
-
-void add_exponent(Equation& e, int& cur_char, int& cur_part)
+static bool add_division(Equation& e, int& cur_char, int& cur_part)
+{
+    e.add_part_at(cur_part, cur_char, Part::Specialty::Fraction, Part::Position::Start);
+    const auto assoc_s = cur_part;
+    e.add_part_at(cur_part, cur_char);
+    const auto cp_part = cur_part;
+    const auto cp_char = cur_char;
+    e.add_part_at(cur_part, cur_char, Part::Specialty::Fraction, Part::Position::Middle);
+    e.parts[assoc_s].meta.assoc = cur_part;
+    const auto assoc_m = cur_part;
+    e.add_part_at(cur_part, cur_char);
+    const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, Part::Specialty::Fraction, Part::Position::End, assoc_m);
+    e.parts[assoc_m].meta.assoc = cur_part;
+    if(!have_any_after)
+    {
+        e.add_part_at(cur_part, cur_char);
+    }
+    cur_part = cp_part;
+    cur_char = cp_char;
+    return true;
+}
+static bool add_exponent(Equation& e, int& cur_char, int& cur_part)
 {
     e.add_part_at(cur_part, cur_char, Part::Specialty::Exponent, Part::Position::Start);
     const auto assoc_s = cur_part;
@@ -56,8 +93,9 @@ void add_exponent(Equation& e, int& cur_char, int& cur_part)
     }
     cur_part = cp_part;
     cur_char = cp_char;
+    return true;
 }
-void add_paren(Equation& e, int& cur_char, int& cur_part, const Part::Position direction)
+static void add_paren(Equation& e, int& cur_char, int& cur_part, const Part::Position direction)
 {
     const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, Part::Specialty::Paren, direction);
     const int cp_part = cur_part;
@@ -75,112 +113,135 @@ void add_paren(Equation& e, int& cur_char, int& cur_part, const Part::Position d
         e.find_matching(cp_part, Part::Specialty::Paren);
     }
 }
+static bool add_start_paren(Equation& e, int& cur_char, int& cur_part)
+{
+    add_paren(e, cur_char, cur_part, Part::Position::Start);
+    return true;
+}
+static bool add_end_paren(Equation& e, int& cur_char, int& cur_part)
+{
+    add_paren(e, cur_char, cur_part, Part::Position::End);
+    return true;
+}
+static bool add_exponential(Equation& e, int& cur_char, int& cur_part)
+{
+    e.parts[cur_part].value.insert(cur_char, "e");
+    cur_char++;
+    add_exponent(e, cur_char, cur_part);
+    return true;
+}
+static bool add_absolute(Equation& e, int& cur_char, int& cur_part)
+{
+    return false;
+}
+static bool add_root(Equation& e, int& cur_char, int& cur_part)
+{
+    return false;
+}
+static bool remove_char(Equation& e, int& cur_char, int& cur_part)
+{
+    return e.remove_at(cur_part, cur_char);
+}
+static constexpr auto keyboard_screens = []() constexpr -> std::array<KeyboardScreen, int(KeyboardScreen::Type::END)> {
+    std::array<KeyboardScreen, int(KeyboardScreen::Type::END)> out;
+    using P_t = std::pair<std::string_view, KeyboardScreen::Action::F_t>;
+    constexpr P_t empty_button{{}, nullptr};
+
+    #define ADD_CHAR_F(v) [](Equation& e, int& cur_char, int& cur_part) -> bool { \
+        e.parts[cur_part].value.insert(cur_char, v); \
+        cur_char += std::size(v) - 1; /* dont count NUL */ \
+        return true; \
+    }
+    #define ADD_CHAR(v) {v, ADD_CHAR_F(v)}
+
+    constexpr std::array<std::array<P_t, KeyboardScreen::W>, KeyboardScreen::H> basic_data{{
+        {{{"(", add_start_paren}, ADD_CHAR("1"), ADD_CHAR("2"), ADD_CHAR("3"), ADD_CHAR("+")}},
+        {{{")", add_end_paren}, ADD_CHAR("4"), ADD_CHAR("5"), ADD_CHAR("6"), ADD_CHAR("-")}},
+        {{{"^", add_exponent}, ADD_CHAR("7"), ADD_CHAR("8"), ADD_CHAR("9"), ADD_CHAR("*")}},
+        {{{"del", remove_char}, ADD_CHAR("."), ADD_CHAR("0"), {"=", complete_equ}, {"/", add_division}}},
+    }};
+
+    auto& basic = out[int(KeyboardScreen::Type::Basic)];
+    basic.name = "basic";
+    for(int y = 0; y < 4; ++y)
+    {
+        for(int x = 0; x < 5; ++x)
+        {
+            const auto [s, f] = basic_data[y][x];
+            basic.buttons[y][x] = s;
+            basic.actions[y][x] = f;
+        }
+    }
+
+    constexpr std::array<std::array<P_t, KeyboardScreen::W>, KeyboardScreen::H> funcs_data{{
+        {{ADD_CHAR("cos"), ADD_CHAR("sin"), ADD_CHAR("tan"), {"exp", add_exponential}, {"abs", add_absolute}}},
+        {{ADD_CHAR("acos"), ADD_CHAR("asin"), ADD_CHAR("atan"), ADD_CHAR("ln"), {"sqrt", add_root}}},
+        {{ADD_CHAR("cot"), ADD_CHAR("sec"), ADD_CHAR("csc"), ADD_CHAR("log"), {"pi", ADD_CHAR_F("P")}}},
+        {{empty_button, empty_button, empty_button, empty_button, ADD_CHAR("ans")}},
+    }};
+    auto& funcs = out[int(KeyboardScreen::Type::Functions)];
+    funcs.name = "special";
+    for(int y = 0; y < 4; ++y)
+    {
+        for(int x = 0; x < 5; ++x)
+        {
+            const auto [s, f] = funcs_data[y][x];
+            funcs.buttons[y][x] = s;
+            funcs.actions[y][x] = f;
+        }
+    }
+
+    #undef ADD_CHAR
+    #undef ADD_CHAR_F
+
+    return out;
+}();
+
+void calculation_loop(void* arg)
+{
+    auto kb = static_cast<Keyboard*>(arg);
+    while(!LightEvent_TryWait(&kb->kill_thread))
+    {
+        LightEvent_Wait(&kb->wakeup);
+        if(LightEvent_TryWait(&kb->kill_thread)) break;
+
+        fprintf(stderr, "optimize\n");
+        kb->current_eq->optimize();
+        fprintf(stderr, "calc\n");
+        kb->result = kb->current_eq->calculate(kb->memory.empty() ? Number{} : kb->memory.back().result);
+        fprintf(stderr, "done\n");
+        kb->stop_calculating();
+    }
+}
+
+#define REMOVE_ODD(v) (((v) & ~1) + (((v) & 1) << 1))
+#define MK_SUBTEX(w, h, w2, h2) {(w), REMOVE_ODD(h), 0.0f, 1.0f, ((w)/(w2)), 1.0f - (REMOVE_ODD(h)/(h2))}
+#define MK_SUBTEX_OFFSET(w, h, w2, h2, oX, oY) {(w), REMOVE_ODD(h), ((oX)/(w2)), 1.0f - (REMOVE_ODD(oY)/(h2)), ((w)/(w2)), 1.0f - (REMOVE_ODD(oY)/(h2)) - (REMOVE_ODD(h)/(h2))}
+static constexpr Tex3DS_SubTexture EQUATION_SUBTEX = MK_SUBTEX(320, Equation::EQU_REGION_HEIGHT, 512.0f, 128.0f);
+static constexpr Tex3DS_SubTexture EQUATION_MEM_SUBTEX = MK_SUBTEX_OFFSET(400, Equation::EQU_REGION_HEIGHT, 512.0f, 128.0f, 0, 0);
+static constexpr Tex3DS_SubTexture ANSWER_MEM_SUBTEX = MK_SUBTEX_OFFSET(400, 120 - Equation::EQU_REGION_HEIGHT, 512.0f, 128.0f, 0, Equation::EQU_REGION_HEIGHT);
+#undef MK_SUBTEX_OFFSET
+#undef MK_SUBTEX
+#undef REMOVE_ODD
+static C2D_ImageTint YES_TINT, NO_TINT, TEXT_YES_TINT, TEXT_NO_TINT;
 
 Keyboard::Keyboard(C2D_SpriteSheet sprites)
 :
-calculating_flag(false), wait_thread(false), kill_thread(false),
-keyboard_tex(512, 256, GPU_RGBA8),
+calculating_flag(false),
+selected_keyboard_screen(int(KeyboardScreen::Type::Basic)),
 current_tex(512, 128, GPU_RGBA8),
 memory_scroll(0), memory_index(0),
 redo_top(false), redo_bottom(false),
-calcThread(nullptr),
-root_menu(nullptr, ""), current_menu(&root_menu),
-selected_entry(-1), changed_keyboard(true)
+calcThread(nullptr)
 {
     LightEvent_Init(&wakeup, RESET_ONESHOT);
+    LightEvent_Init(&kill_thread, RESET_ONESHOT);
+    LightEvent_Init(&wait_thread, RESET_STICKY);
 
     for(auto& p : memory_tex)
     {
         p = std::make_unique<Tex>(512, 128, GPU_RGBA8);
     }
-
-    root_menu.entries.reserve(3);
-    const auto punct_menu_id = root_menu.add("punctuation");
-    const auto func_menu_id = root_menu.add("functions");
-    const auto num_menu_id = root_menu.add("numbers");
-
-    #define ADD_CHAR(v) [](Equation& e, int& cur_char, int& cur_part) -> void { \
-        e.parts[cur_part].value.insert(cur_char, v); \
-        cur_char += std::size(v) - 1; /* dont count NUL */ \
-    }
-
-    auto& punct_menu = root_menu.entries[punct_menu_id];
-
-    punct_menu.add("+", ADD_CHAR("+"));
-    punct_menu.add(")", [](Equation& e, int& cur_char, int& cur_part) -> void {
-        add_paren(e, cur_char, cur_part, Part::Position::End);
-    });
-    punct_menu.add(".", ADD_CHAR("."));
-    punct_menu.add("/", [](Equation& e, int& cur_char, int& cur_part) -> void {
-        e.add_part_at(cur_part, cur_char, Part::Specialty::Fraction, Part::Position::Start);
-        const auto assoc_s = cur_part;
-        e.add_part_at(cur_part, cur_char);
-        const auto cp_part = cur_part;
-        const auto cp_char = cur_char;
-        e.add_part_at(cur_part, cur_char, Part::Specialty::Fraction, Part::Position::Middle);
-        e.parts[assoc_s].meta.assoc = cur_part;
-        const auto assoc_m = cur_part;
-        e.add_part_at(cur_part, cur_char);
-        const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, Part::Specialty::Fraction, Part::Position::End, assoc_m);
-        e.parts[assoc_m].meta.assoc = cur_part;
-        if(!have_any_after)
-        {
-            e.add_part_at(cur_part, cur_char);
-        }
-        cur_part = cp_part;
-        cur_char = cp_char;
-    });
-    punct_menu.add("*", ADD_CHAR("*"));
-    punct_menu.add("^", add_exponent);
-    punct_menu.add("(", [](Equation& e, int& cur_char, int& cur_part) -> void {
-        add_paren(e, cur_char, cur_part, Part::Position::Start);
-    });
-    punct_menu.add("-", ADD_CHAR("-"));
-
-    auto& func_menu = root_menu.entries[func_menu_id];
-    func_menu.add("ln", ADD_CHAR("ln"));
-    func_menu.add("log", ADD_CHAR("log"));
-    func_menu.add("abs", [](Equation& e, int& cur_char, int& cur_part) -> void {
-        const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, Part::Specialty::Absolute, Part::Position::Start);
-        const int cp_part = cur_part;
-        if(!have_any_after)
-        {
-            e.add_part_at(cur_part, cur_char);
-        }
-        else
-        {
-            e.right_of(cur_part, cur_char);
-        }
-
-        e.find_matching(cp_part, Part::Specialty::Absolute);
-    });
-    func_menu.add("cos", ADD_CHAR("cos"));
-    func_menu.add("sin", ADD_CHAR("sin"));
-    func_menu.add("tan", ADD_CHAR("tan"));
-    func_menu.add("acos", ADD_CHAR("acos"));
-    func_menu.add("asin", ADD_CHAR("asin"));
-    func_menu.add("atan", ADD_CHAR("atan"));
-    func_menu.add("exp", [](Equation& e, int& cur_char, int& cur_part) -> void {
-        e.parts[cur_part].value.insert(cur_char, "e");
-        cur_char++;
-        add_exponent(e, cur_char, cur_part);
-    });
-
-    auto& num_menu = root_menu.entries[num_menu_id];
-    num_menu.add("0", ADD_CHAR("0"));
-    num_menu.add("1", ADD_CHAR("1"));
-    num_menu.add("2", ADD_CHAR("2"));
-    num_menu.add("3", ADD_CHAR("3"));
-    num_menu.add("4", ADD_CHAR("4"));
-    num_menu.add("5", ADD_CHAR("5"));
-    num_menu.add("6", ADD_CHAR("6"));
-    num_menu.add("7", ADD_CHAR("7"));
-    num_menu.add("8", ADD_CHAR("8"));
-    num_menu.add("9", ADD_CHAR("9"));
-    num_menu.add("pi", ADD_CHAR("P"));
-    num_menu.add("ans", ADD_CHAR("ans"));
-
-    #undef ADD_CHAR
 
     TextMap::generate(sprites);
     C2D_PlainImageTint(&YES_TINT, COLOR_GRAY, 1.0f);
@@ -202,7 +263,7 @@ Keyboard::~Keyboard()
 {
     if(calcThread)
     {
-        kill_thread.store(true);
+        LightEvent_Signal(&kill_thread);
         LightEvent_Signal(&wakeup);
         threadJoin(calcThread, U64_MAX);
         threadFree(calcThread);
@@ -217,7 +278,7 @@ void Keyboard::handle_buttons(const u32 kDown, const u32 kDownRepeat)
     {
         select_next_type();
     }
-    else if(selection == SelectionType::Equation)
+    else if(selection == SelectionType::BottomScreen)
     {
         if(kDown & KEY_A)
         {
@@ -231,6 +292,14 @@ void Keyboard::handle_buttons(const u32 kDown, const u32 kDownRepeat)
         {
             start_equation(false);
         }
+        else if(kDown & KEY_L)
+        {
+            KeyboardScreen::prev(selected_keyboard_screen);
+        }
+        else if(kDown & KEY_R)
+        {
+            KeyboardScreen::next(selected_keyboard_screen);
+        }
         else if(kDownRepeat & KEY_DLEFT)
         {
             any_change = current_eq->left_of(editing_part, editing_char);
@@ -242,82 +311,7 @@ void Keyboard::handle_buttons(const u32 kDown, const u32 kDownRepeat)
             any_change = current_eq->right_of(editing_part, editing_char);
         }
     }
-    else if(selection == SelectionType::Keyboard)
-    {
-        if(kDown & KEY_A)
-        {
-            if(selected_entry != -1)
-            {
-                if(auto& m = current_menu->entries[selected_entry]; m.func != nullptr)
-                {
-                    any_change = true;
-                    m.func(*current_eq, editing_char, editing_part);
-                }
-                else
-                {
-                    current_menu = &m;
-                    selected_entry = -1;
-                    changed_keyboard = true;
-                }
-            }
-        }
-        else if(kDown & KEY_B)
-        {
-            if(selected_entry != -1)
-            {
-                selected_entry = -1;
-                changed_keyboard = true;
-            }
-            else if(current_menu->parent != nullptr)
-            {
-                auto prev_menu = current_menu->parent;
-                current_menu = prev_menu;
-                selected_entry = -1;
-                changed_keyboard = true;
-            }
-        }
-        else if(kDown & KEY_DUP)
-        {
-            if(selected_entry == -1)
-            {
-                selected_entry = 0;
-                changed_keyboard = true;
-            }
-        }
-        else if(kDown & KEY_DDOWN)
-        {
-            if(selected_entry != -1)
-            {
-                selected_entry = -1;
-                changed_keyboard = true;
-            }
-        }
-        else if(kDownRepeat & KEY_DLEFT)
-        {
-            if(selected_entry != -1)
-            {
-                if(selected_entry == 0)
-                {
-                    selected_entry = current_menu->entries.size();
-                }
-                selected_entry--;
-                changed_keyboard = true;
-            }
-        }
-        else if(kDownRepeat & KEY_DRIGHT)
-        {
-            if(selected_entry != -1)
-            {
-                selected_entry++;
-                if(static_cast<size_t>(selected_entry) == current_menu->entries.size())
-                {
-                    selected_entry = 0;
-                }
-                changed_keyboard = true;
-            }
-        }
-    }
-    else if(selection == SelectionType::Memory)
+    else if(selection == SelectionType::TopScreen)
     {
         if(kDownRepeat & KEY_DUP)
         {
@@ -379,11 +373,11 @@ void Keyboard::handle_circle_pad(const int x, const int y)
         }
     };
 
-    if(selection == SelectionType::Equation)
+    if(selection == SelectionType::BottomScreen)
     {
         do_scroll(at_x, at_y, x, y, 320, render_result, any_change);
     }
-    else if(selection == SelectionType::Memory)
+    else if(selection == SelectionType::TopScreen)
     {
         if(!memory.empty())
         {
@@ -391,63 +385,36 @@ void Keyboard::handle_circle_pad(const int x, const int y)
             do_scroll(line.at_x, line.at_y, x, y, 400, line.render_res, memory_index == memory_scroll ? redo_bottom : redo_top);
         }
     }
-    else if(selection == SelectionType::Keyboard)
-    {
-        if((x * x + y * y) > 20000)
-        {
-            const int ang_deg = int((atan2f(x, y) * 180.0f / 3.14159f) + 720) % 360;
-
-            const int partCount = current_menu->entries.size();
-            const auto degrees_per_part_full = std::div(360, partCount);
-            const auto on_part = std::div(int(ang_deg), degrees_per_part_full.quot);
-            if(on_part.rem < 2 || on_part.rem >= (degrees_per_part_full.quot - 2))
-            {
-                if(selected_entry != -1)
-                {
-                    selected_entry = -1;
-                    changed_keyboard = true;
-                }
-            }
-            else
-            {
-                if(on_part.quot != selected_entry)
-                {
-                    selected_entry = on_part.quot;
-                    changed_keyboard = true;
-                }
-            }
-        }
-    }
 }
 void Keyboard::handle_touch(const int x, const int y)
 {
     if(y < Equation::EQU_REGION_HEIGHT)
     {
-        if(selection != SelectionType::Equation)
+        const auto& pos = screen_data[x + y * 320];
+        if(pos.part != -1 && pos.pos != -1 && (pos.part != editing_part || pos.pos != editing_char))
         {
-            selection = SelectionType::Equation;
-        }
-        else
-        {
-            const auto& pos = screen_data[x + y * 320];
-            if(pos.part != -1 && pos.pos != -1 && (pos.part != editing_part || pos.pos != editing_char))
-            {
-                editing_part = pos.part;
-                editing_char = pos.pos;
-                any_change = true;
-            }
+            editing_part = pos.part;
+            editing_char = pos.pos;
+            any_change = true;
         }
     }
-    else if(y > (Equation::EQU_REGION_HEIGHT + 1))
+    else if(Equation::EQU_REGION_HEIGHT <= y && y < EQU_GAP_END)
     {
-        if(selection != SelectionType::Keyboard)
+        if(2 >= x && x < 10)
         {
-            selection = SelectionType::Keyboard;
+            KeyboardScreen::prev(selected_keyboard_screen);
         }
-        else
+        else if(310 >= x && x < 318)
         {
-
+            KeyboardScreen::next(selected_keyboard_screen);
         }
+    }
+    else
+    {
+        const int by = (y - EQU_GAP_END)/36;
+        const int bx = x/64;
+        const auto& scr = keyboard_screens[selected_keyboard_screen];
+        any_change = scr.actions[by][bx](*current_eq, editing_char, editing_part);
     }
 }
 
@@ -456,11 +423,6 @@ void Keyboard::do_clears()
     if(any_change)
     {
         auto t = current_tex.get_target();
-        C2D_TargetClear(t, COLOR_TRANSPARENT);
-    }
-    if(changed_keyboard)
-    {
-        auto t = keyboard_tex.get_target();
         C2D_TargetClear(t, COLOR_TRANSPARENT);
     }
     if(redo_top)
@@ -494,77 +456,6 @@ void Keyboard::update_memory(C2D_SpriteSheet sprites)
         auto& mem_line = memory[memory.size() - memory_scroll - 1];
         mem_line.render_res = mem_line.equation->render_memory(mem_line.at_x, mem_line.at_y, sprites);
         mem_line.result.render(sprites);
-    }
-}
-void Keyboard::update_keyboard(C2D_SpriteSheet sprites)
-{
-    if(changed_keyboard)
-    {
-        changed_keyboard = false;
-        auto t = keyboard_tex.get_target();
-        C2D_SceneBegin(t);
-
-        using DrawType = void(*)(const std::vector<Menu>&, const int, C2D_SpriteSheet);
-        static constexpr DrawType DrawParts = [](const std::vector<Menu>& parts, const int selected, C2D_SpriteSheet sprites) -> void {
-            const int partCount = parts.size();
-            const auto degrees_per_part_full = std::div(360, partCount);
-            const auto degrees_per_part = degrees_per_part_full.quot - 4;
-
-            C2D_Sprite partYes;
-            C2D_SpriteFromSheet(&partYes, sprites, sprites_circle_yes_idx);
-            C2D_SpriteSetDepth(&partYes, 0.625f);
-            C2D_SpriteSetCenter(&partYes, 0.5f, 0.5f);
-            C2D_SpriteSetPos(&partYes, KEYBOARD_SUBTEX.width/2.0f, (KEYBOARD_SUBTEX.height)/2.0f);
-
-            C2D_Sprite partNo;
-            C2D_SpriteFromSheet(&partNo, sprites, sprites_circle_not_idx);
-            C2D_SpriteSetDepth(&partNo, 0.625f);
-            C2D_SpriteSetCenter(&partNo, 0.5f, 0.5f);
-            C2D_SpriteSetPos(&partNo, KEYBOARD_SUBTEX.width/2.0f, KEYBOARD_SUBTEX.height/2.0f);
-
-            int deg = (degrees_per_part_full.rem/2) + 1;
-            for(int p = 0; p < partCount; ++p)
-            {
-                C2D_Sprite* s = (p == selected ? &partYes : &partNo);
-                const C2D_ImageTint* t = (p == selected ? &YES_TINT : &NO_TINT );
-
-                deg += 2;
-                for(int d = 0; d < degrees_per_part; ++d)
-                {
-                    C2D_SpriteSetRotationDegrees(s, deg);
-                    C2D_DrawSpriteTinted(s, t);
-                    deg++;
-                }
-                deg += 2;
-            }
-
-            deg = (degrees_per_part_full.rem/2) + 1;
-            for(int p = 0; p < partCount; ++p)
-            {
-                const auto& part = TextMap::char_to_sprite->menu.at(parts[p].name);
-                const C2D_ImageTint* it = (p == selected ? &TEXT_YES_TINT : &TEXT_NO_TINT );
-                const float distance = (p == selected ? 58.0f : 55.0f);
-
-                deg += 2;
-                const int d = deg + degrees_per_part/2;
-
-                const float rad_ang = ((d - 90)) * 3.14159f / 180.0f;
-                const int dx = std::cos(rad_ang) * distance;
-                const int dy = std::sin(rad_ang) * distance;
-                float x = (KEYBOARD_SUBTEX.width/2.0f) + dx - (part.width / 2.0f);
-                const float y = (KEYBOARD_SUBTEX.height/2.0f) + dy - (24 / 2.0f);
-                for(const auto& i : part.sprites)
-                {
-                    C2D_DrawImageAt(i, x, y, 0.75f, it);
-                    x += i.subtex->width;
-                }
-
-                deg += degrees_per_part;
-                deg += 2;
-            }
-        };
-
-        DrawParts(current_menu->entries, selected_entry, sprites);
     }
 }
 void Keyboard::update_equation(C2D_SpriteSheet sprites)
@@ -625,7 +516,7 @@ void Keyboard::draw_memory(C2D_SpriteSheet sprites) const
         draw_mem_at(*memory_tex[1], 120, memory[memory.size() - memory_scroll - 1]);
     }
 
-    if(selection == SelectionType::Memory)
+    if(selection == SelectionType::TopScreen)
     {
         if(memory.size() >= 2)
         {
@@ -678,18 +569,53 @@ void Keyboard::draw(C2D_SpriteSheet sprites) const
         C2D_DrawImageAt(spr, (320.0f - spr.subtex->width)/2.0f, Equation::EQU_REGION_HEIGHT - spr.subtex->height, 0.5f, &arrow_tint);
     }
 
-    C2D_DrawRectSolid(0, Equation::EQU_REGION_HEIGHT, 0.0f, 320, 1, C2D_Color32(0,0,0,255));
+    C2D_DrawRectSolid(0, Equation::EQU_REGION_HEIGHT, 0.0f, 320, EQU_GAP_HEIGHT, COLOR_BLACK);
 
-    C2D_DrawImageAt(C2D_Image{keyboard_tex.get_tex(), &KEYBOARD_SUBTEX}, 0, Equation::EQU_REGION_HEIGHT + 1, 0.0f);
 
-    if(selection != SelectionType::Keyboard)
+    const auto& scr = keyboard_screens[selected_keyboard_screen];
+   
+    C2D_Image button_img = C2D_SpriteSheetGetImage(sprites, sprites_keyboard_button_idx);
+    C2D_ImageTint button_tint;
+    C2D_PlainImageTint(&button_tint, C2D_Color32(50, 50, 150, 255), 1.0f);
+    for(int y = 0, py = EQU_GAP_END; y < KeyboardScreen::H; ++y, py += 36)
     {
-        C2D_DrawRectSolid(0, Equation::EQU_REGION_HEIGHT + 1, 0.75f + 0.0625f, 320, 240 - 1 - Equation::EQU_REGION_HEIGHT, COLOR_HIDE);
+        for(int x = 0, px = 0; x < KeyboardScreen::W; ++x, px += 64)
+        {
+            if(scr.actions[y][x])
+            {
+                const auto txtmap = TextMap::char_to_sprite->menu.at(scr.buttons[y][x]);
+                C2D_DrawImageAt(button_img, px, py, 0.0f, &button_tint);
+                auto dx = px + (64 - txtmap.width)/2;
+                for(const auto& img : txtmap.sprites)
+                {
+                    C2D_DrawImageAt(img, dx, py + (36 - img.subtex->height)/2, 0.25f, &button_tint);
+                    dx += img.subtex->width;
+                }
+            }
+        }
     }
-    
-    if(selection != SelectionType::Equation)
+
+    C2D_ImageTint text_tint;
+    C2D_PlainImageTint(&text_tint, COLOR_WHITE, 1.0f);
+    const int w = (320 - (scr.name.size() * 13))/2;
+    int x = w;
+    for(const char c : scr.name)
     {
-        C2D_DrawRectSolid(0, 0, 0.75f + 0.0625f, 320, Equation::EQU_REGION_HEIGHT, COLOR_HIDE);
+        const auto img = TextMap::char_to_sprite->equ.at(std::string_view(&c, 1));
+        C2D_DrawImageAt(img, x, Equation::EQU_REGION_HEIGHT + (EQU_GAP_HEIGHT - img.subtex->height)/2, 0.5f, &text_tint);
+        x += 13;
+    }
+
+    C2D_PlainImageTint(&arrow_tint, C2D_Color32(128, 128, 128, 255), 1.0f);
+    const auto arrow_left = C2D_SpriteSheetGetImage(sprites, sprites_arrow_left_idx);
+    const auto arrow_right = C2D_SpriteSheetGetImage(sprites, sprites_arrow_right_idx);
+    C2D_DrawImageAt(arrow_left, 2, Equation::EQU_REGION_HEIGHT + (EQU_GAP_HEIGHT - arrow_left.subtex->height)/2, 0.5f, &arrow_tint);
+    C2D_DrawImageAt(arrow_right, 320 - 2 - arrow_right.subtex->width, Equation::EQU_REGION_HEIGHT + (EQU_GAP_HEIGHT - arrow_right.subtex->height)/2, 0.5f, &arrow_tint);
+
+
+    if(selection != SelectionType::BottomScreen)
+    {
+        C2D_DrawRectSolid(0, 0, 0.75f + 0.0625f, 320, 240, COLOR_HIDE);
     }
 }
 void Keyboard::draw_loader() const
@@ -705,9 +631,9 @@ void Keyboard::select_next_type()
 
 bool Keyboard::calculating()
 {
-    if(wait_thread.load())
+    if(LightEvent_TryWait(&wait_thread))
     {
-        wait_thread.store(false);
+        LightEvent_Clear(&wait_thread);
         start_equation();
     }
     return calculating_flag.load();
@@ -745,21 +671,21 @@ void Keyboard::start_equation(bool save)
     cursor_toggle_time = osGetTime();
     cursor_on = true;
     any_change = true;
-    selection = SelectionType::Keyboard;
+    selection = SelectionType::BottomScreen;
 }
 void Keyboard::start_calculating()
 {
     calculating_flag.store(true);
-    LightEvent_Signal(&wakeup);
     if(!calcThread)
     {
         calcThread = threadCreate(calculation_loop, this, 256 * 1024, 31, 1, false);
         svcSleepThread(10ULL * 1000ULL * 1000ULL);
     }
+    LightEvent_Signal(&wakeup);
     C2D_SpriteSetRotationDegrees(&spinning_loader, 0.0f);
 }
 void Keyboard::stop_calculating()
 {
     calculating_flag.store(false);
-    wait_thread.store(true);
+    LightEvent_Signal(&wait_thread);
 }

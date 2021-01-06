@@ -7,7 +7,6 @@
 #include <string>
 #include <citro2d.h>
 
-
 class Tex {
     C3D_Tex t;
     C3D_RenderTarget* target;

@@ -7,7 +7,7 @@
 
 void Number::render(C2D_SpriteSheet sprites) const
 {
-    static char floattextbuf[64];
+    char floattextbuf[64];
     std::snprintf(floattextbuf, 63, "%.6g", value);
 
     C2D_ImageTint text_tint;
@@ -19,7 +19,7 @@ void Number::render(C2D_SpriteSheet sprites) const
     int x = 0;
     for(const char c : sv)
     {
-        const auto& img = TextMap::char_to_sprite->equ.at(std::string_view(&c, 1)).sprites.front();
+        const auto img = TextMap::char_to_sprite->equ.at(std::string_view(&c, 1));
         C2D_DrawImageAt(img, 400 - w + x, Equation::EQU_REGION_HEIGHT + (40 - img.subtex->height)/2, 1.0f, &text_tint);
         x += 13;
     }
@@ -318,7 +318,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                 {
                     if(info.can_draw(vertical_offset))
                     {
-                        const auto& img = TextMap::char_to_sprite->equ.at(std::string_view(&c, 1)).sprites.front();
+                        const auto img = TextMap::char_to_sprite->equ.at(std::string_view(&c, 1));
                         C2D_DrawImageAt(img, info.get_x(), info.get_y(vertical_offset), 0.0f, &text_tint);
                         if(screen)
                         {

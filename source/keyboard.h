@@ -20,7 +20,6 @@ struct Keyboard {
 
     void do_clears();
     void update_memory(C2D_SpriteSheet sprites);
-    void update_keyboard(C2D_SpriteSheet sprites);
     void update_equation(C2D_SpriteSheet sprites);
     void draw_memory(C2D_SpriteSheet sprites) const;
     void draw(C2D_SpriteSheet sprites) const;
@@ -28,19 +27,6 @@ struct Keyboard {
     bool calculating();
 
 private:
-    struct Menu {
-        using ActionType = void(*)(Equation&, int&, int&);
-
-        Menu* const parent;
-        std::string_view name;
-        ActionType func;
-        std::vector<Menu> entries;
-
-        size_t add(std::string_view submenu, ActionType f = nullptr);
-
-        Menu(Menu* p, std::string_view n, ActionType f = nullptr) : parent(p), name(n), func(f) { }
-    };
-    
     struct MemoryLine {
         std::unique_ptr<Equation> equation;
         Number result;
@@ -48,9 +34,8 @@ private:
         int at_x{}, at_y{};
     };
     enum class SelectionType : int {
-        Keyboard,
-        Equation,
-        Memory,
+        BottomScreen,
+        TopScreen,
 
         END
     };
@@ -63,8 +48,8 @@ private:
     void stop_calculating();
 
     std::atomic_bool calculating_flag;
-    std::atomic_bool wait_thread;
-    std::atomic_bool kill_thread;
+    LightEvent wait_thread;
+    LightEvent kill_thread;
     LightEvent wakeup;
     mutable C2D_Sprite spinning_loader;
 
@@ -76,13 +61,14 @@ private:
     mutable u64 cursor_toggle_time;
     mutable bool cursor_on;
     bool any_change;
+
     SelectionType selection;
+    int selected_keyboard_screen;
 
     std::unique_ptr<Equation> current_eq;
     Number result;
     std::vector<MemoryLine> memory;
 
-    mutable Tex keyboard_tex;
     mutable Tex current_tex;
     mutable std::array<std::unique_ptr<Tex>, 2> memory_tex;
     size_t memory_scroll;
@@ -91,11 +77,6 @@ private:
     bool redo_bottom;
 
     Thread calcThread;
-
-    Menu root_menu;
-    Menu* current_menu;
-    int selected_entry;
-    bool changed_keyboard;
 };
 
 #endif

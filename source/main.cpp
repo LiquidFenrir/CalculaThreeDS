@@ -9,8 +9,14 @@
 
 u32 __stacksize__ = 512 * 1024;
 
+static void termhandler()
+{
+    svcBreak(USERBREAK_PANIC);
+}
+
 int main(int argc, char** argv)
 {
+    std::set_terminate(termhandler);
     gfxInitDefault();
     C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
     C2D_Init(C2D_DEFAULT_MAX_OBJECTS);
@@ -57,7 +63,6 @@ int main(int argc, char** argv)
         {
             kb.do_clears();
             kb.update_memory(sprites);
-            kb.update_keyboard(sprites);
             kb.update_equation(sprites);
         }
 
@@ -88,7 +93,7 @@ int main(int argc, char** argv)
             {
                 kb.handle_buttons(kDown, kDownRepeat);
             }
-            else if(kDown & KEY_TOUCH)
+            else if(kDownRepeat & KEY_TOUCH)
             {
                 touchPosition pos;
                 hidTouchRead(&pos);

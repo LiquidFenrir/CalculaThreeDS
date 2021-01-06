@@ -1,7 +1,7 @@
 --atlas -f rgba8888 -z auto
 loader.png
-circle_yes.png
-circle_not.png
+keyboard_button.png
+delete.png
 arrow_up.png
 arrow_down.png
 arrow_left.png
@@ -49,6 +49,7 @@ operators_full/mul.png
 operators_full/div.png
 operators_full/pow.png
 operators_full/decimals.png
+operators_full/equals.png
 operators_full/root.png
 operators_full/abs.png
 operators_full/exp.png
