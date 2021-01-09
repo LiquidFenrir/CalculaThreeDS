@@ -369,7 +369,7 @@ void Keyboard::handle_buttons(const u32 kDown, const u32 kDownRepeat)
             {
                 if(current_eq->parts[0].meta.next == current_eq->parts[current_eq->parts[0].meta.assoc].meta.before && current_eq->parts[current_eq->parts[0].meta.next].value.empty()) // if the current equation is empty
                 {
-                    start_equation(false, memory[memory_index].equation.get());
+                    start_equation(false, memory[memory.size() - memory_index - 1].equation.get());
                 }
             }
         }

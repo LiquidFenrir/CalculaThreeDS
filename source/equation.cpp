@@ -8,7 +8,8 @@
 void Number::render(C2D_SpriteSheet sprites) const
 {
     char floattextbuf[64];
-    std::snprintf(floattextbuf, 63, "%.11g", std::round(value * 100000.0)/100000.0);
+    const double toprint = std::round(value * 100000.0)/100000.0;
+    std::snprintf(floattextbuf, 63, "%.11g", toprint + 0.0);
 
     C2D_ImageTint text_tint;
     C2D_PlainImageTint(&text_tint, COLOR_BLACK, 1.0f);
@@ -834,7 +835,7 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                     if(const Token* op = opstack.back();
                         op->type != Token::Type::ParenOpen && (
                             op->type == Token::Type::Function ||
-                            get_prec(op->value) > prec ||
+                            get_prec(op->value) >= prec ||
                             (get_prec(op->value) == prec && get_assoc(op->value))
                         )
                     )
