@@ -28,11 +28,11 @@ struct KeyboardScreen {
     std::string_view name;
     std::array<std::array<std::string_view, KeyboardScreen::W>, KeyboardScreen::H> buttons;
     struct Action {
-        using F_t = bool(*)(Equation&, int&, int&);
+        using F_t = int(*)(Equation&, int&, int&);
         constexpr Action() : f(nullptr) { }
         constexpr Action& operator=(const F_t& f_) { f = f_; return *this; }
 
-        constexpr bool operator()(Equation& e, int& cur_char, int& cur_part) const
+        constexpr int operator()(Equation& e, int& cur_char, int& cur_part) const
         {
             if(f)
             {
@@ -53,11 +53,11 @@ private:
 static constexpr int EQU_GAP_END = (240 - (KeyboardScreen::H * 36));
 static constexpr int EQU_GAP_HEIGHT = EQU_GAP_END - Equation::EQU_REGION_HEIGHT;
 
-static bool complete_equ(Equation& e, int& cur_char, int& cur_part)
+static int complete_equ(Equation& e, int& cur_char, int& cur_part)
 {
-    return false;
+    return -1;
 }
-static bool add_division(Equation& e, int& cur_char, int& cur_part)
+static int add_division(Equation& e, int& cur_char, int& cur_part)
 {
     e.add_part_at(cur_part, cur_char, Part::Specialty::Fraction, Part::Position::Start);
     const auto assoc_s = cur_part;
@@ -76,9 +76,9 @@ static bool add_division(Equation& e, int& cur_char, int& cur_part)
     }
     cur_part = cp_part;
     cur_char = cp_char;
-    return true;
+    return 1;
 }
-static bool add_exponent(Equation& e, int& cur_char, int& cur_part)
+static int add_exponent(Equation& e, int& cur_char, int& cur_part)
 {
     e.add_part_at(cur_part, cur_char, Part::Specialty::Exponent, Part::Position::Start);
     const auto assoc_s = cur_part;
@@ -93,11 +93,11 @@ static bool add_exponent(Equation& e, int& cur_char, int& cur_part)
     }
     cur_part = cp_part;
     cur_char = cp_char;
-    return true;
+    return 1;
 }
 static void add_paren(Equation& e, int& cur_char, int& cur_part, const Part::Position direction)
 {
-    const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, Part::Specialty::Paren, direction);
+    const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, Part::Specialty::TempParen, direction);
     const int cp_part = cur_part;
     if(!have_any_after)
     {
@@ -110,35 +110,35 @@ static void add_paren(Equation& e, int& cur_char, int& cur_part, const Part::Pos
 
     if(e.parts[cp_part].meta.assoc == -1)
     {
-        e.find_matching(cp_part, Part::Specialty::Paren);
+        e.find_matching_tmp_paren(cp_part);
     }
 }
-static bool add_start_paren(Equation& e, int& cur_char, int& cur_part)
+static int add_start_paren(Equation& e, int& cur_char, int& cur_part)
 {
     add_paren(e, cur_char, cur_part, Part::Position::Start);
-    return true;
+    return 1;
 }
-static bool add_end_paren(Equation& e, int& cur_char, int& cur_part)
+static int add_end_paren(Equation& e, int& cur_char, int& cur_part)
 {
     add_paren(e, cur_char, cur_part, Part::Position::End);
-    return true;
+    return 1;
 }
-static bool add_exponential(Equation& e, int& cur_char, int& cur_part)
+static int add_exponential(Equation& e, int& cur_char, int& cur_part)
 {
     e.parts[cur_part].value.insert(cur_char, "e");
     cur_char++;
     add_exponent(e, cur_char, cur_part);
-    return true;
+    return 1;
 }
-static bool add_absolute(Equation& e, int& cur_char, int& cur_part)
+static int add_absolute(Equation& e, int& cur_char, int& cur_part)
 {
-    return false;
+    return e.set_special(cur_part, cur_char, Part::Specialty::Absolute);
 }
-static bool add_root(Equation& e, int& cur_char, int& cur_part)
+static int add_root(Equation& e, int& cur_char, int& cur_part)
 {
-    return false;
+    return e.set_special(cur_part, cur_char, Part::Specialty::Root);
 }
-static bool remove_char(Equation& e, int& cur_char, int& cur_part)
+static int remove_char(Equation& e, int& cur_char, int& cur_part)
 {
     return e.remove_at(cur_part, cur_char);
 }
@@ -147,10 +147,10 @@ static constexpr auto keyboard_screens = []() constexpr -> std::array<KeyboardSc
     using P_t = std::pair<std::string_view, KeyboardScreen::Action::F_t>;
     constexpr P_t empty_button{{}, nullptr};
 
-    #define ADD_CHAR_F(v) [](Equation& e, int& cur_char, int& cur_part) -> bool { \
+    #define ADD_CHAR_F(v) [](Equation& e, int& cur_char, int& cur_part) -> int { \
         e.parts[cur_part].value.insert(cur_char, v); \
         cur_char += std::size(v) - 1; /* dont count NUL */ \
-        return true; \
+        return 1; \
     }
     #define ADD_CHAR(v) {v, ADD_CHAR_F(v)}
 
@@ -176,8 +176,8 @@ static constexpr auto keyboard_screens = []() constexpr -> std::array<KeyboardSc
     constexpr std::array<std::array<P_t, KeyboardScreen::W>, KeyboardScreen::H> funcs_data{{
         {{ADD_CHAR("cos"), ADD_CHAR("sin"), ADD_CHAR("tan"), {"exp", add_exponential}, {"abs", add_absolute}}},
         {{ADD_CHAR("acos"), ADD_CHAR("asin"), ADD_CHAR("atan"), ADD_CHAR("ln"), {"sqrt", add_root}}},
-        {{ADD_CHAR("cot"), ADD_CHAR("sec"), ADD_CHAR("csc"), ADD_CHAR("log"), {"pi", ADD_CHAR_F("P")}}},
-        {{empty_button, empty_button, empty_button, empty_button, ADD_CHAR("ans")}},
+        {{ADD_CHAR("cot"), ADD_CHAR("sec"), ADD_CHAR("csc"), ADD_CHAR("log"), empty_button}},
+        {{{"pi", ADD_CHAR_F("P")}, ADD_CHAR("ans"), empty_button, empty_button, empty_button}},
     }};
     auto& funcs = out[int(KeyboardScreen::Type::Functions)];
     funcs.name = "special";
@@ -400,11 +400,11 @@ void Keyboard::handle_touch(const int x, const int y)
     }
     else if(Equation::EQU_REGION_HEIGHT <= y && y < EQU_GAP_END)
     {
-        if(2 >= x && x < 10)
+        if(x < 10)
         {
             KeyboardScreen::prev(selected_keyboard_screen);
         }
-        else if(310 >= x && x < 318)
+        else if(310 <= x)
         {
             KeyboardScreen::next(selected_keyboard_screen);
         }
@@ -414,7 +414,15 @@ void Keyboard::handle_touch(const int x, const int y)
         const int by = (y - EQU_GAP_END)/36;
         const int bx = x/64;
         const auto& scr = keyboard_screens[selected_keyboard_screen];
-        any_change = scr.actions[by][bx](*current_eq, editing_char, editing_part);
+        const int r = scr.actions[by][bx](*current_eq, editing_char, editing_part);
+        if(r < 0)
+        {
+            start_calculating();
+        }
+        else
+        {
+            any_change = r;
+        }
     }
 }
 
@@ -576,7 +584,7 @@ void Keyboard::draw(C2D_SpriteSheet sprites) const
    
     C2D_Image button_img = C2D_SpriteSheetGetImage(sprites, sprites_keyboard_button_idx);
     C2D_ImageTint button_tint;
-    C2D_PlainImageTint(&button_tint, C2D_Color32(50, 50, 150, 255), 1.0f);
+    C2D_PlainImageTint(&button_tint, COLOR_BLUE, 1.0f);
     for(int y = 0, py = EQU_GAP_END; y < KeyboardScreen::H; ++y, py += 36)
     {
         for(int x = 0, px = 0; x < KeyboardScreen::W; ++x, px += 64)
@@ -606,7 +614,7 @@ void Keyboard::draw(C2D_SpriteSheet sprites) const
         x += 13;
     }
 
-    C2D_PlainImageTint(&arrow_tint, C2D_Color32(128, 128, 128, 255), 1.0f);
+    C2D_PlainImageTint(&arrow_tint, COLOR_GRAY, 1.0f);
     const auto arrow_left = C2D_SpriteSheetGetImage(sprites, sprites_arrow_left_idx);
     const auto arrow_right = C2D_SpriteSheetGetImage(sprites, sprites_arrow_right_idx);
     C2D_DrawImageAt(arrow_left, 2, Equation::EQU_REGION_HEIGHT + (EQU_GAP_HEIGHT - arrow_left.subtex->height)/2, 0.5f, &arrow_tint);

@@ -87,9 +87,6 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
         id_stack.pop_back();
         return i;
     };
-    const auto str_to_len = [](const std::string& s) -> int {
-        return ((s.empty()) ? (1) : (s.size()));
-    };
 
     enum CareAbout : int {
         CA_Width = 1,
@@ -130,10 +127,39 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
         const auto& p = parts[idx];
         auto& ps = part_sizes[idx];
 
-        ps.data = str_to_len(p.value);
+        ps.data = [&]() -> int {;
+            if(p.meta.special == Part::Specialty::TempParen)
+            {
+                return 1;
+            }
+            else if(p.value.empty())
+            {
+                const auto& prev_part = parts[p.meta.before];
+                const auto& next_part = parts[p.meta.next];
+                const bool sandwiched = (check_pos_is(prev_part.meta.position, Part::Position::Start) && check_pos_is(next_part.meta.position, Part::Position::End));
+                if(
+                    (sandwiched && prev_part.meta.special != next_part.meta.special)
+                    ||
+                    (sandwiched && (prev_part.meta.special == Part::Specialty::Equation || prev_part.meta.special == Part::Specialty::Paren || prev_part.meta.special == Part::Specialty::Absolute))
+                    ||
+                    (prev_part.meta.position == Part::Position::End || prev_part.meta.special == Part::Specialty::TempParen)
+                )
+                {
+                    return 0;
+                }
+                return 1;
+            }
+            else
+            {
+                return p.value.size();
+            }
+        }();
+
         ps.content_width = ps.data;
         ps.y_start = 1;
         ps.y_end = -1;
+        ps.paren_y_start = 1;
+        ps.paren_y_end = -1;
 
         add_content_info(ps);
     };
@@ -143,7 +169,7 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
     while(current_idx != -1)
     {
         const auto& part = parts[current_idx];
-        if(part.meta.special == Part::Specialty::None)
+        if(part.meta.special == Part::Specialty::None || part.meta.special == Part::Specialty::TempParen)
         {
             do_part_basic(current_idx);
         }
@@ -193,12 +219,23 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
                         add_content_info(aps, CA_HeightAbove);
                     }
                 }
-                else if(part.meta.special == Part::Specialty::Paren)
+                else if(part.meta.special == Part::Specialty::Paren || part.meta.special == Part::Specialty::Absolute)
                 {
                     aps.associated = current_idx;
                     ps.associated = associated_id;
 
                     ps.paren_y_start = aps.paren_y_start;
+                    ps.paren_y_end = aps.paren_y_end;
+
+                    aps.content_width += 2;
+                    add_content_info(aps, CA_All);
+                }
+                else if(part.meta.special == Part::Specialty::Root)
+                {
+                    aps.associated = current_idx;
+                    ps.associated = associated_id;
+
+                    ps.paren_y_start = aps.paren_y_start + 1;
                     ps.paren_y_end = aps.paren_y_end;
 
                     aps.content_width += 2;
@@ -222,6 +259,17 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
     part_sizes.resize(parts.size());
     find_part_sizes(parts, part_sizes);
 
+    int selected_multi_id = -1;
+    int selected_multi_assoc = -1;
+    if(info.editing_char == 0)
+    {
+        if(const auto& part_before = parts[parts[info.editing_part].meta.before]; part_before.meta.special == Part::Specialty::Paren || part_before.meta.special == Part::Specialty::Absolute)
+        {
+            selected_multi_id = parts[info.editing_part].meta.before;
+            selected_multi_assoc = part_before.meta.assoc;
+        }
+    }
+
     int current_idx = 0;
 
     C2D_Image empty_img = C2D_SpriteSheetGetImage(sprites, sprites_empty_but_clickable_idx);
@@ -238,17 +286,30 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
         C2D_SpriteSheetGetImage(sprites, sprites_rparen_end_idx),
     };
 
+    C2D_Image abs_sprites[] = {
+        C2D_SpriteSheetGetImage(sprites, sprites_abs_begin_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_abs_middle_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_abs_end_idx),
+    };
+
+    C2D_Image sqrt_sprites[] = {
+        C2D_SpriteSheetGetImage(sprites, sprites_sqrt_begin_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_sqrt_middle_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_sqrt_end_idx),
+    };
+
     C2D_ImageTint text_tint;
     C2D_PlainImageTint(&text_tint, COLOR_BLACK, 1.0f);
     C2D_ImageTint temp_tint;
     C2D_PlainImageTint(&temp_tint, COLOR_GRAY, 1.0f);
+    C2D_ImageTint paren_selected_tint;
+    C2D_PlainImageTint(&paren_selected_tint, COLOR_BLUE, 1.0f);
 
-    const auto draw_paren = [&](const C2D_Image* sprites, const int vertical_offset, const int y_start, const int y_end, const bool tmp) -> void {
+    const auto draw_paren = [&](const C2D_Image* sprites, const int vertical_offset, const int y_start, const int y_end, const C2D_ImageTint* tnt) -> void {
         const int span = (y_start - y_end) - 2;
         const int span_pixels = (span * 24 / 4) + 1;
         const int pixel_y = info.get_y(vertical_offset) - ((y_start - 1) * 24 / 4);
         const int x = info.get_x();
-        C2D_ImageTint* tnt = tmp ? &temp_tint : &text_tint;
         C2D_DrawImageAt(sprites[0], x, pixel_y, 0.0f, tnt);
         const int middle_y = pixel_y + sprites[0].subtex->height;
         C2D_DrawImageAt(sprites[1], x, middle_y, 0.0f, tnt, 1.0f, span_pixels);
@@ -277,7 +338,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
             pos.part = current_idx;
             if(part.value.empty())
             {
-                if(info.can_draw(vertical_offset))
+                if(part_size.data != 0 && info.can_draw(vertical_offset))
                 {
                     const auto& img = empty_img;
                     C2D_DrawImageAt(img, info.get_x(), info.get_y(vertical_offset), 0.0f, &text_tint);
@@ -309,7 +370,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                     set_cursor(info.get_y(vertical_offset));
                 }
 
-                info.current_x += 13;
+                if(part_size.data != 0) info.current_x += 13;
             }
             else
             {
@@ -322,7 +383,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                         C2D_DrawImageAt(img, info.get_x(), info.get_y(vertical_offset), 0.0f, &text_tint);
                         if(screen)
                         {
-                            pos.pos = char_idx;
+                            pos.pos = char_idx + 1;
                             for(int y = 0; y < 24; y++)
                             {
                                 const int actual_y = info.get_y(vertical_offset) + y;
@@ -356,15 +417,18 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                     set_cursor(info.get_y(vertical_offset));
                 }
             }
-
-            pos.pos += 1; // makes parens put the cursor at the end
         }
         else if(part.meta.special != Part::Specialty::Equation)
         {
-            if(part.meta.special == Part::Specialty::Paren)
+            if(part.meta.special == Part::Specialty::Paren || part.meta.special == Part::Specialty::TempParen || part.meta.special == Part::Specialty::Absolute)
             {
+                pos.part = part.meta.next;
                 const C2D_Image* sprs = nullptr;
-                if(part.meta.position == Part::Position::Start)
+                if(part.meta.special == Part::Specialty::Absolute)
+                {
+                    sprs = abs_sprites;
+                }
+                else if(part.meta.position == Part::Position::Start)
                 {
                     sprs = lpa_sprites;
                 }
@@ -373,7 +437,19 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                     sprs = rpa_sprites;
                 }
 
-                draw_paren(sprs, vertical_offset, part_size.paren_y_start, part_size.paren_y_end, part.meta.tmp);
+                const C2D_ImageTint* tnt = &temp_tint;
+                if(part.meta.special == Part::Specialty::Paren || part.meta.special == Part::Specialty::Absolute)
+                {
+                    if(current_idx == selected_multi_id || current_idx == selected_multi_assoc)
+                    {
+                        tnt = &paren_selected_tint;
+                    }
+                    else
+                    {
+                        tnt = &text_tint;
+                    }
+                }
+                draw_paren(sprs, vertical_offset, part_size.paren_y_start, part_size.paren_y_end, tnt);
 
                 if(screen)
                 {
@@ -396,6 +472,20 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                     }
                 }
 
+                info.current_x += 13;
+            }
+            else if(part.meta.special == Part::Specialty::Root)
+            {
+                if(part.meta.position == Part::Position::Start)
+                {
+                    draw_paren(sqrt_sprites, vertical_offset, part_size.paren_y_start, part_size.paren_y_end, &text_tint);
+                    const int pixel_y = info.get_y(vertical_offset) - ((part_size.paren_y_start - 1) * 24 / 4);
+                    const int bar_x = info.get_x() + 10;
+                    const int bar_w = (part_size.content_width - 2) * 13 + 10;
+                    const int notch_x = bar_x + bar_w;
+                    C2D_DrawRectSolid(bar_x, pixel_y, 0.125f, bar_w, 2, COLOR_BLACK);
+                    C2D_DrawRectSolid(notch_x, pixel_y, 0.125f, 2, 10, COLOR_BLACK);
+                }
                 info.current_x += 13;
             }
             else if(part.meta.special == Part::Specialty::Fraction)
@@ -488,47 +578,49 @@ Number Equation::calculate(const Number& input)
     return input;
 }
 
-void Equation::find_matching(const int original_pos, const Part::Specialty special)
+int Equation::set_special(const int current_part_id, const int at_position, const Part::Specialty special)
+{
+    if(static_cast<size_t>(at_position) != parts[current_part_id].value.size()) return 0;
+
+    const int next_id = parts[current_part_id].meta.next;
+    if(next_id == -1) return 0;
+
+    auto& p = parts[next_id];
+    if(p.meta.special != Part::Specialty::Paren || p.meta.position != Part::Position::Start) return 0;
+
+    p.meta.special = special;
+    parts[p.meta.assoc].meta.special = special;
+
+    return 1;
+}
+void Equation::find_matching_tmp_paren(const int original_pos)
 {
     using HelperType = int(*)(Equation&, const int);
-    const auto do_find = [](Equation& e, const int original_pos, const Part::Specialty special, int inc_on_start, HelperType get_following, HelperType get_append_pos) {
-        const auto do_append = [](Equation& e, const int p, const int original_pos, const Part::Specialty special, HelperType get_append_pos) -> void {
-            int char_position = get_append_pos(e, p);
-            int part_id = p;
-            const auto [have_any_before, have_any_after] = e.add_part_at(part_id, char_position, special, !e.parts[original_pos].meta.position, original_pos);
-            
-            if(special == Part::Specialty::Paren)
-            {
-                e.parts[part_id].meta.tmp = true;
-            }
-
-            e.parts[original_pos].meta.assoc = part_id;
-            if(!have_any_after)
-            {
-                e.add_part_at(part_id, char_position);
-            }
-        };
-
+    const auto do_find = [](Equation& e, const int original_pos, int inc_on_start, HelperType get_following) {
         int current_count = 0;
         int prev_pos = original_pos;
+        const Part::Position searching_for = !e.parts[original_pos].meta.position;
         int pos = get_following(e, prev_pos);
 
-        while(true) // will eventually hit a part
+        while(current_count >= 0 /* && pos != -1 */) // second test redundant, since we have the Equation start and end chunks
         {
-            if(check_pos_is(e.parts[pos].meta.position, Part::Position::End))
+            if(current_count == 0 && e.parts[pos].meta.special == Part::Specialty::TempParen && e.parts[pos].meta.position == searching_for)
+            {
+                e.parts[pos].meta.special = Part::Specialty::Paren;
+                e.parts[pos].meta.assoc = original_pos;
+                e.parts[original_pos].meta.special = Part::Specialty::Paren;
+                e.parts[original_pos].meta.assoc = pos;
+                break;
+            }
+
+            if(check_pos_is(e.parts[pos].meta.position, Part::Position::End) && e.parts[pos].meta.special != Part::Specialty::TempParen)
             {
                 current_count -= inc_on_start;
             }
 
-            if(check_pos_is(e.parts[pos].meta.position, Part::Position::Start))
+            if(check_pos_is(e.parts[pos].meta.position, Part::Position::Start) && e.parts[pos].meta.special != Part::Specialty::TempParen)
             {
                 current_count += inc_on_start;
-            }
-
-            if(current_count < 0)
-            {
-                do_append(e, prev_pos, original_pos, special, get_append_pos);
-                return;
             }
 
             prev_pos = pos;
@@ -539,42 +631,24 @@ void Equation::find_matching(const int original_pos, const Part::Specialty speci
     if(parts[original_pos].meta.position == Part::Position::Start)
     {
         // go forward
-        do_find(*this, original_pos, special, +1,
+        do_find(*this, original_pos, +1,
             [](Equation& e, const int pos) -> int {
                 return e.parts[pos].meta.next;
-            },
-            [](Equation& e, const int pos) -> int {
-                return e.parts[pos].value.size();
             }
         );
     }
     else if(parts[original_pos].meta.position == Part::Position::End)
     {
         // go backwards
-        do_find(*this, original_pos, special, -1,
+        do_find(*this, original_pos, -1,
             [](Equation& e, const int pos) -> int {
                 return e.parts[pos].meta.before;
-            },
-            [](Equation& e, const int pos) -> int {
-                return 0;
             }
         );
     }
 }
 std::pair<bool, bool> Equation::add_part_at(int& current_part_id, int& at_position, const Part::Specialty special, const Part::Position position, const int assoc)
 {
-    if(assoc == -1 && static_cast<size_t>(at_position) == parts[current_part_id].value.size())
-    {
-        auto& next_part = parts[parts[current_part_id].meta.next];
-        if(special == Part::Specialty::Paren && next_part.meta.special == Part::Specialty::Paren && next_part.meta.position == position && next_part.meta.tmp)
-        {
-            next_part.meta.tmp = false;
-            current_part_id = parts[current_part_id].meta.next;
-            at_position = 0;
-            return {true, true}; // if it's a paren, it has to have a text part after
-        }
-    }
-
     std::string before_val = parts[current_part_id].value.substr(0, at_position);
     std::string after_val = parts[current_part_id].value.substr(at_position);
     const bool after_val_empty = after_val.empty();
@@ -645,6 +719,29 @@ bool Equation::remove_at(int& current_part_id, int& at_position)
 {
     if(at_position == 0)
     {
+        const auto merge_single_part = [this](Part::Meta single_meta) -> std::pair<int, int> {
+            const int before_part_start_id = single_meta.before;
+            const int after_part_start_id = single_meta.next;
+
+            const int part_id = before_part_start_id;
+            const int at_char = parts[part_id].value.size();
+
+            /*
+             * equ_start -> A -> single -> B -> equ_end
+             * append B to A
+             * make A's next into B's next
+             * make B's next's before into A
+             * equ_start -> AB -> equ_end
+             */
+            
+            Part::Meta after_start_meta = parts[after_part_start_id].meta;
+
+            parts[before_part_start_id].value.append(parts[after_part_start_id].value);
+            parts[before_part_start_id].meta.next = after_start_meta.next;
+            parts[after_start_meta.next].meta.before = before_part_start_id;
+
+            return {part_id, at_char};
+        };
         const auto merge_parts = [this](Part::Meta start_meta, Part::Meta end_meta) -> std::pair<int, int> {
             const int before_part_start_id = start_meta.before;
             const int after_part_start_id = start_meta.next;
@@ -695,7 +792,7 @@ bool Equation::remove_at(int& current_part_id, int& at_position)
             return {part_id, at_char};
         };
 
-        Part::Meta start_meta = parts[parts[current_part_id].meta.before].meta;
+        Part::Meta start_meta = parts[parts[current_part_id].meta.before].meta; // select the special chunk before the writing area we're in
         if(start_meta.special == Part::Specialty::Equation) // Don't allow deleting the first chunk
         {
             return false;
@@ -725,6 +822,18 @@ bool Equation::remove_at(int& current_part_id, int& at_position)
 
             current_part_id = part_id;
             at_position = at_char;
+            return true;
+        }
+        else if(start_meta.special == Part::Specialty::Paren)
+        {
+            parts[start_meta.assoc].meta.assoc = -1;
+            parts[start_meta.assoc].meta.special = Part::Specialty::TempParen;
+            std::tie(current_part_id, at_position) = merge_single_part(start_meta);
+            return true;
+        }
+        else if(start_meta.special == Part::Specialty::TempParen)
+        {
+            std::tie(current_part_id, at_position) = merge_single_part(start_meta);
             return true;
         }
         else

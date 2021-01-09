@@ -93,7 +93,7 @@ int main(int argc, char** argv)
             {
                 kb.handle_buttons(kDown, kDownRepeat);
             }
-            else if(kDownRepeat & KEY_TOUCH)
+            else if(kDown & KEY_TOUCH)
             {
                 touchPosition pos;
                 hidTouchRead(&pos);

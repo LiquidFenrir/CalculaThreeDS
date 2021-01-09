@@ -46,7 +46,9 @@ struct Part {
         Fraction = 2,
         Exponent = 4,
         Absolute = 8,
-        Paren = 16,
+        Root = 16,
+        Paren = 32,
+        TempParen = 64,
     };
     enum class Position : unsigned char {
         None = 0,
@@ -61,7 +63,6 @@ struct Part {
         int assoc = -1;
         Specialty special = Specialty::None;
         Position position = Position::None;
-        bool tmp = false;
     };
     Meta meta;
     std::string value{};
@@ -123,7 +124,8 @@ struct Equation {
     void optimize();
     Number calculate(const Number& input);
 
-    void find_matching(const int original_pos, const Part::Specialty special);
+    int set_special(const int current_part_id, const int at_position, const Part::Specialty special);
+    void find_matching_tmp_paren(const int original_pos);
     std::pair<bool, bool> add_part_at(int& current_part_id, int& at_position, const Part::Specialty special = Part::Specialty::None, const Part::Position position = Part::Position::None, const int assoc = -1);
     bool remove_at(int& current_part_id, int& at_position);
     bool left_of(int& current_part_id, int& at_position);
