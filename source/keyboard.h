@@ -43,7 +43,7 @@ private:
 
     static void calculation_loop(void* arg);
 
-    void start_equation(bool save = true);
+    void start_equation(bool save = true, const Equation* to_copy = nullptr);
     void start_calculating();
     void stop_calculating();
 

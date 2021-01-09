@@ -363,7 +363,17 @@ void Keyboard::handle_buttons(const u32 kDown, const u32 kDownRepeat)
     }
     else if(selection == SelectionType::TopScreen)
     {
-        if(kDownRepeat & KEY_DUP)
+        if(kDown & KEY_A)
+        {
+            if(memory.size() >= 1)
+            {
+                if(current_eq->parts[0].meta.next == current_eq->parts[current_eq->parts[0].meta.assoc].meta.before && current_eq->parts[current_eq->parts[0].meta.next].value.empty()) // if the current equation is empty
+                {
+                    start_equation(false, memory[memory_index].equation.get());
+                }
+            }
+        }
+        else if(kDownRepeat & KEY_DUP)
         {
             if(memory.size() >= 2 && memory_index != (memory.size() - 1))
             {
@@ -696,7 +706,7 @@ bool Keyboard::calculating()
     }
     return calculating_flag.load();
 }
-void Keyboard::start_equation(bool save)
+void Keyboard::start_equation(bool save, const Equation* to_copy)
 {
     if(current_eq && save)
     {
@@ -722,7 +732,7 @@ void Keyboard::start_equation(bool save)
     }
 
     result = Number{};
-    current_eq = std::make_shared<Equation>();
+    current_eq = to_copy ? std::make_shared<Equation>(*to_copy) : std::make_shared<Equation>();
     editing_part = 1;
     editing_char = 0;
     at_x = 0;

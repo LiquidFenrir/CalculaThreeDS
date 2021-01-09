@@ -8,7 +8,7 @@
 void Number::render(C2D_SpriteSheet sprites) const
 {
     char floattextbuf[64];
-    std::snprintf(floattextbuf, 63, "%.11g", std::round(value * 10000.0)/10000.0);
+    std::snprintf(floattextbuf, 63, "%.11g", std::round(value * 100000.0)/100000.0);
 
     C2D_ImageTint text_tint;
     C2D_PlainImageTint(&text_tint, COLOR_BLACK, 1.0f);
@@ -597,7 +597,6 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
 {
     #define ERROR_AT(part, pos) { error_part = part; error_position = pos; return {}; }
 
-    fprintf(stderr, "token stage\n");
     struct Token {
         enum class Type {
             Number,
@@ -622,7 +621,6 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
         while(current_idx != -1)
         {
             const auto& p = parts[current_idx];
-            fprintf(stderr, "entering node %d: special %d pos %d\n", current_idx, int(p.meta.special), int(p.meta.position));
             if(p.meta.special != Part::Specialty::None)
             {
                 if(p.meta.special == Part::Specialty::TempParen)
@@ -701,7 +699,6 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
             {
                 int pos = 0;
                 const char* beg = p.value.c_str();
-                fprintf(stderr, "entering node %d: %s\n", current_idx, beg);
                 for(const char c : p.value)
                 {
                     if(('0' <= c && c <= '9') || c == '.')
@@ -784,7 +781,6 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
     }();
     if(base_tokens.empty()) return std::make_pair(Number{}, true);
 
-    fprintf(stderr, "rpn stage\n");
     const auto final_rpn = [&]() -> std::vector<const Token*> {
         std::vector<const Token*> postfix;
         std::vector<const Token*> opstack;
@@ -863,7 +859,6 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
     }();
     if(final_rpn.empty()) std::make_pair(Number{}, true);
 
-    fprintf(stderr, "eval stage\n");
     #undef ERROR_AT
     #define ERROR_AT(part, pos) { error_part = part; error_position = pos; return std::make_pair(Number{}, true); }
 
@@ -897,8 +892,18 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
         MK_WRAPPER(acos),
         MK_WRAPPER(asin),
         MK_WRAPPER(atan),
+        MK_WRAPPER(exp),
         MK_WRAPPER_FN(ln, log),
         MK_WRAPPER_FN(log, log10),
+        {"cot", {
+            vals.back() = Value(1.0/std::tan(vals.back().val.value));
+        }},
+        {"sec", {
+            vals.back() = Value(1.0/std::cos(vals.back().val.value));
+        }},
+        {"csc", {
+            vals.back() = Value(1.0/std::sin(vals.back().val.value));
+        }},
     };
 
     std::vector<Value> value_stack;
