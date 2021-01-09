@@ -895,13 +895,13 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
         MK_WRAPPER(exp),
         MK_WRAPPER_FN(ln, log),
         MK_WRAPPER_FN(log, log10),
-        {"cot", {
+        {"cot", [](std::vector<Value>& vals) {
             vals.back() = Value(1.0/std::tan(vals.back().val.value));
         }},
-        {"sec", {
+        {"sec", [](std::vector<Value>& vals) {
             vals.back() = Value(1.0/std::cos(vals.back().val.value));
         }},
-        {"csc", {
+        {"csc", [](std::vector<Value>& vals) {
             vals.back() = Value(1.0/std::sin(vals.back().val.value));
         }},
     };
