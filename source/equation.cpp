@@ -134,15 +134,21 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
             }
             else if(p.value.empty())
             {
-                const auto& prev_part = parts[p.meta.before];
-                const auto& next_part = parts[p.meta.next];
-                const bool sandwiched = (check_pos_is(prev_part.meta.position, Part::Position::Start) && check_pos_is(next_part.meta.position, Part::Position::End));
+                const auto& prev_meta = parts[p.meta.before].meta;
+                const auto& next_meta = parts[p.meta.next].meta;
+                const bool sandwiched = (check_pos_is(prev_meta.position, Part::Position::Start) && check_pos_is(next_meta.position, Part::Position::End)) && prev_meta.special == next_meta.special;
                 if(
-                    (sandwiched && prev_part.meta.special != next_part.meta.special)
+                    (sandwiched && (
+                        prev_meta.special == Part::Specialty::Equation ||
+                        prev_meta.special == Part::Specialty::Paren ||
+                        prev_meta.special == Part::Specialty::Absolute
+                    ))
                     ||
-                    (sandwiched && (prev_part.meta.special == Part::Specialty::Equation || prev_part.meta.special == Part::Specialty::Paren || prev_part.meta.special == Part::Specialty::Absolute))
-                    ||
-                    (prev_part.meta.position == Part::Position::End || prev_part.meta.special == Part::Specialty::TempParen)
+                    (!sandwiched && (prev_meta.special == Part::Specialty::TempParen
+                        || next_meta.special != Part::Specialty::Exponent
+                        || (next_meta.special == Part::Specialty::Exponent && next_meta.position != Part::Position::Start)
+                        || (next_meta.special == Part::Specialty::Exponent && prev_meta.special == Part::Specialty::Paren && prev_meta.position == Part::Position::End)
+                    ))
                 )
                 {
                     return 0;
@@ -527,7 +533,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
     part_sizes.clear();
 }
 
-Equation::RenderResult Equation::render(const int x, const int y, const int editing_part, const int editing_char, C2D_SpriteSheet sprites, PartPos* screen)
+Equation::RenderResult Equation::render_main(const int x, const int y, const int editing_part, const int editing_char, C2D_SpriteSheet sprites, PartPos* screen)
 {
     RenderResult out{0,0,0,-1,-1, false};
     RenderInfo info{
@@ -573,9 +579,15 @@ void Equation::optimize()
     parts = std::move(tmp);
 }
 
-Number Equation::calculate(const Number& input)
+std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& variables, int& error_part, int& error_position)
 {
-    return input;
+    struct Node {
+        std::string value;
+        int next_A;
+        int next_B;
+    };
+
+    return {{}, false};
 }
 
 int Equation::set_special(const int current_part_id, const int at_position, const Part::Specialty special)

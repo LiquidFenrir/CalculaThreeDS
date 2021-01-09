@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <vector>
+#include <map>
 #include <array>
 #include <string>
 #include <citro2d.h>
@@ -42,18 +43,18 @@ public:
 struct Part {
     enum class Specialty : unsigned short {
         None = 0,
-        Equation = 1,
-        Fraction = 2,
-        Exponent = 4,
-        Absolute = 8,
-        Root = 16,
-        Paren = 32,
-        TempParen = 64,
+        Equation = BIT(0),
+        Fraction = BIT(1),
+        Exponent = BIT(2),
+        Absolute = BIT(3),
+        Root = BIT(4),
+        Paren = BIT(5),
+        TempParen = BIT(6),
     };
     enum class Position : unsigned char {
         None = 0,
-        Start = 1,
-        End = 2,
+        Start = BIT(0),
+        End = BIT(1),
         Middle = Start | End,
     };
 
@@ -104,7 +105,7 @@ struct PartPos {
     int part{-1}, pos{-1};
 };
 struct Number {
-    float value{};
+    double value{};
     void render(C2D_SpriteSheet sprites) const;
 };
 
@@ -116,13 +117,13 @@ struct Equation {
     };
     static inline constexpr int EQU_REGION_HEIGHT = 80;
 
-    RenderResult render(const int x, const int y, const int editing_part, const int editing_char, C2D_SpriteSheet sprites, PartPos* screen);
+    RenderResult render_main(const int x, const int y, const int editing_part, const int editing_char, C2D_SpriteSheet sprites, PartPos* screen);
     RenderResult render_memory(const int x, const int y, C2D_SpriteSheet sprites);
     std::vector<Part> parts;
 
     Equation();
     void optimize();
-    Number calculate(const Number& input);
+    std::pair<Number, bool> calculate(std::map<std::string, Number>& variables, int& error_part, int& error_position);
 
     int set_special(const int current_part_id, const int at_position, const Part::Specialty special);
     void find_matching_tmp_paren(const int original_pos);

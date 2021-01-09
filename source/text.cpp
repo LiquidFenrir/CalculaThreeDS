@@ -149,6 +149,9 @@ void TextMap::generate(C2D_SpriteSheet sprites)
     menu.insert_or_assign("del", TextMapEntry({
         C2D_SpriteSheetGetImage(sprites, sprites_delete_idx),
     }));
+    menu.insert_or_assign(">", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_assign_arrow_idx),
+    }));
 
     static char arr_dig[2 * 10] = {0};
     for(int i = 0; i < 10; ++i)
@@ -156,6 +159,9 @@ void TextMap::generate(C2D_SpriteSheet sprites)
         char* p = &arr_dig[i * 2];
         p[0] = '0' + i;
         equ.insert_or_assign(p, C2D_SpriteSheetGetImage(sprites, sprites_0_idx + i));
+        menu.insert_or_assign(p, TextMapEntry({
+            C2D_SpriteSheetGetImage(sprites, sprites_0_idx + i),
+        }));
     }
 
     static char arr_let[2 * 26] = {0};
@@ -164,6 +170,9 @@ void TextMap::generate(C2D_SpriteSheet sprites)
         char* p = &arr_let[i * 2];
         p[0] = 'a' + i;
         equ.insert_or_assign(p, C2D_SpriteSheetGetImage(sprites, sprites_a_idx + i));
+        menu.insert_or_assign(p, TextMapEntry({
+            C2D_SpriteSheetGetImage(sprites, sprites_a_idx + i),
+        }));
     }
 
     equ.insert_or_assign("P", C2D_SpriteSheetGetImage(sprites, sprites_pi_idx));
@@ -171,6 +180,8 @@ void TextMap::generate(C2D_SpriteSheet sprites)
     equ.insert_or_assign("-", C2D_SpriteSheetGetImage(sprites, sprites_sub_idx));
     equ.insert_or_assign("*", C2D_SpriteSheetGetImage(sprites, sprites_mul_idx));
     equ.insert_or_assign(".", C2D_SpriteSheetGetImage(sprites, sprites_decimals_idx));
+
+    equ.insert_or_assign(">", C2D_SpriteSheetGetImage(sprites, sprites_assign_arrow_idx));
 
     char_to_sprite = std::make_unique<TextMap>(std::move(menu), std::move(equ));
 }

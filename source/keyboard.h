@@ -9,8 +9,6 @@
 #include "equation.h"
 
 struct Keyboard {
-    friend void calculation_loop(void* arg);
-
     Keyboard(C2D_SpriteSheet sprites);
     ~Keyboard();
 
@@ -28,7 +26,7 @@ struct Keyboard {
 
 private:
     struct MemoryLine {
-        std::unique_ptr<Equation> equation;
+        std::shared_ptr<Equation> equation;
         Number result;
         Equation::RenderResult render_res;
         int at_x{}, at_y{};
@@ -41,11 +39,15 @@ private:
     };
     void select_next_type();
 
-    static inline constexpr int MemorySize = 6;
+    static inline constexpr int MemorySize = 12;
+
+    static void calculation_loop(void* arg);
 
     void start_equation(bool save = true);
     void start_calculating();
     void stop_calculating();
+
+    std::map<std::string, Number> variables;
 
     std::atomic_bool calculating_flag;
     LightEvent wait_thread;
@@ -61,11 +63,12 @@ private:
     mutable u64 cursor_toggle_time;
     mutable bool cursor_on;
     bool any_change;
+    bool error_eq;
 
     SelectionType selection;
     int selected_keyboard_screen;
 
-    std::unique_ptr<Equation> current_eq;
+    std::shared_ptr<Equation> current_eq;
     Number result;
     std::vector<MemoryLine> memory;
 

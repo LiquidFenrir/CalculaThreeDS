@@ -1,15 +1,15 @@
-#include <algorithm>
-#include <cmath>
-#include <array>
 #include "keyboard.h"
 #include "text.h"
 #include "sprites.h"
 #include "colors.h"
-
+#include <algorithm>
+#include <cmath>
+#include <array>
 struct KeyboardScreen {
     enum class Type : int {
         Basic,
         Functions,
+        Variables,
 
         END
     };
@@ -38,7 +38,7 @@ struct KeyboardScreen {
             {
                 return f(e, cur_char, cur_part);
             }
-            return false;
+            return 0;
         }
         constexpr operator bool() const
         {
@@ -138,13 +138,39 @@ static int add_exponential(Equation& e, int& cur_char, int& cur_part)
     add_exponent(e, cur_char, cur_part);
     return 1;
 }
+static void add_special(Equation& e, int& cur_char, int& cur_part, const Part::Specialty special)
+{
+    if(e.set_special(cur_part, cur_char, special) == 0)
+    {
+        e.add_part_at(cur_part, cur_char, special, Part::Position::Start);
+        const auto assoc_s = cur_part;
+        e.add_part_at(cur_part, cur_char);
+        const auto cp_part = cur_part;
+        const auto cp_char = cur_char;
+        const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, special, Part::Position::End, assoc_s);
+        e.parts[assoc_s].meta.assoc = cur_part;
+        if(!have_any_after)
+        {
+            e.add_part_at(cur_part, cur_char);
+        }
+        cur_part = cp_part;
+        cur_char = cp_char;
+    }
+    else
+    {
+        cur_part = e.parts[e.parts[cur_part].meta.next].meta.next;
+        cur_char = 0;
+    }
+}
 static int add_absolute(Equation& e, int& cur_char, int& cur_part)
 {
-    return e.set_special(cur_part, cur_char, Part::Specialty::Absolute);
+    add_special(e, cur_char, cur_part, Part::Specialty::Absolute);
+    return 1;
 }
 static int add_root(Equation& e, int& cur_char, int& cur_part)
 {
-    return e.set_special(cur_part, cur_char, Part::Specialty::Root);
+    add_special(e, cur_char, cur_part, Part::Specialty::Root);
+    return 1;
 }
 static int remove_char(Equation& e, int& cur_char, int& cur_part)
 {
@@ -162,6 +188,16 @@ static constexpr auto keyboard_screens = []() constexpr -> std::array<KeyboardSc
     }
     #define ADD_CHAR(v) {v, ADD_CHAR_F(v)}
 
+    #define DO_PART(v, n, d) { \
+        v.name = n; \
+        for(int y = 0; y < KeyboardScreen::H; ++y) for(int x = 0; x < KeyboardScreen::W; ++x) \
+        { \
+            const auto [s, f] = d[y][x]; \
+            v.buttons[y][x] = s; \
+            v.actions[y][x] = f; \
+        } \
+    }
+
     constexpr std::array<std::array<P_t, KeyboardScreen::W>, KeyboardScreen::H> basic_data{{
         {{{"(", add_start_paren}, ADD_CHAR("1"), ADD_CHAR("2"), ADD_CHAR("3"), ADD_CHAR("+")}},
         {{{")", add_end_paren}, ADD_CHAR("4"), ADD_CHAR("5"), ADD_CHAR("6"), ADD_CHAR("-")}},
@@ -170,34 +206,27 @@ static constexpr auto keyboard_screens = []() constexpr -> std::array<KeyboardSc
     }};
 
     auto& basic = out[int(KeyboardScreen::Type::Basic)];
-    basic.name = "basic";
-    for(int y = 0; y < 4; ++y)
-    {
-        for(int x = 0; x < 5; ++x)
-        {
-            const auto [s, f] = basic_data[y][x];
-            basic.buttons[y][x] = s;
-            basic.actions[y][x] = f;
-        }
-    }
+    DO_PART(basic, "basic", basic_data)
 
     constexpr std::array<std::array<P_t, KeyboardScreen::W>, KeyboardScreen::H> funcs_data{{
         {{ADD_CHAR("cos"), ADD_CHAR("sin"), ADD_CHAR("tan"), {"exp", add_exponential}, {"abs", add_absolute}}},
         {{ADD_CHAR("acos"), ADD_CHAR("asin"), ADD_CHAR("atan"), ADD_CHAR("ln"), {"sqrt", add_root}}},
         {{ADD_CHAR("cot"), ADD_CHAR("sec"), ADD_CHAR("csc"), ADD_CHAR("log"), empty_button}},
-        {{{"pi", ADD_CHAR_F("P")}, ADD_CHAR("ans"), empty_button, empty_button, empty_button}},
+        {{empty_button, empty_button, empty_button, empty_button, empty_button}},
     }};
     auto& funcs = out[int(KeyboardScreen::Type::Functions)];
-    funcs.name = "special";
-    for(int y = 0; y < 4; ++y)
-    {
-        for(int x = 0; x < 5; ++x)
-        {
-            const auto [s, f] = funcs_data[y][x];
-            funcs.buttons[y][x] = s;
-            funcs.actions[y][x] = f;
-        }
-    }
+    DO_PART(funcs, "functions", funcs_data)
+
+    constexpr std::array<std::array<P_t, KeyboardScreen::W>, KeyboardScreen::H> vars_data{{
+        {{ADD_CHAR("a"), {"pi", ADD_CHAR_F("P")}, ADD_CHAR("k"), ADD_CHAR("f"), ADD_CHAR("x")}},
+        {{ADD_CHAR("b"), ADD_CHAR("ans"), ADD_CHAR("l"), ADD_CHAR("g"), ADD_CHAR("y")}},
+        {{ADD_CHAR("c"), ADD_CHAR("i"), ADD_CHAR("m"), ADD_CHAR("h"), ADD_CHAR("z")}},
+        {{ADD_CHAR("d"), ADD_CHAR("j"), ADD_CHAR("n"), empty_button, ADD_CHAR(">")}},
+    }};
+    auto& vars = out[int(KeyboardScreen::Type::Variables)];
+    DO_PART(vars, "variables", vars_data)
+
+    #undef DO_PART
 
     #undef ADD_CHAR
     #undef ADD_CHAR_F
@@ -205,7 +234,7 @@ static constexpr auto keyboard_screens = []() constexpr -> std::array<KeyboardSc
     return out;
 }();
 
-void calculation_loop(void* arg)
+void Keyboard::calculation_loop(void* arg)
 {
     auto kb = static_cast<Keyboard*>(arg);
     while(!LightEvent_TryWait(&kb->kill_thread))
@@ -213,11 +242,24 @@ void calculation_loop(void* arg)
         LightEvent_Wait(&kb->wakeup);
         if(LightEvent_TryWait(&kb->kill_thread)) break;
 
-        fprintf(stderr, "optimize\n");
         kb->current_eq->optimize();
-        fprintf(stderr, "calc\n");
-        kb->result = kb->current_eq->calculate(kb->memory.empty() ? Number{} : kb->memory.back().result);
-        fprintf(stderr, "done\n");
+
+        if(kb->current_eq->parts.size() == 3 && kb->current_eq->parts[1].value.empty()) // if the thing to calculate is empty
+        {
+            if(!kb->memory.empty()) // and if there is a memory, reuse it and do the same calculation
+            {
+                kb->current_eq = kb->memory.back().equation;
+            }
+            else // just don't do anything
+            {
+                kb->error_eq = true;
+                kb->stop_calculating();
+                continue;
+            }
+        }
+
+        std::tie(kb->result, kb->error_eq) = kb->current_eq->calculate(kb->variables, kb->editing_part, kb->editing_char);
+
         kb->stop_calculating();
     }
 }
@@ -481,7 +523,7 @@ void Keyboard::update_equation(C2D_SpriteSheet sprites)
         any_change = false;
         auto t = current_tex.get_target();
         C2D_SceneBegin(t);
-        render_result = current_eq->render(at_x, at_y, editing_part, editing_char, sprites, screen_data.data());
+        render_result = current_eq->render_main(at_x, at_y, editing_part, editing_char, sprites, screen_data.data());
     }
 }
 
@@ -650,7 +692,7 @@ bool Keyboard::calculating()
     if(LightEvent_TryWait(&wait_thread))
     {
         LightEvent_Clear(&wait_thread);
-        start_equation();
+        if(!error_eq) start_equation();
     }
     return calculating_flag.load();
 }
@@ -667,7 +709,8 @@ void Keyboard::start_equation(bool save)
             memory.emplace_back();
         }
 
-        memory.back() = {std::move(current_eq), std::move(result)};
+        memory.back() = {current_eq, std::move(result)};
+        variables.insert_or_assign("ans", memory.back().result);
         redo_top = true;
         redo_bottom = true;
         if(memory.size() == 1)
@@ -679,7 +722,7 @@ void Keyboard::start_equation(bool save)
     }
 
     result = Number{};
-    current_eq = std::make_unique<Equation>();
+    current_eq = std::make_shared<Equation>();
     editing_part = 1;
     editing_char = 0;
     at_x = 0;
@@ -687,10 +730,12 @@ void Keyboard::start_equation(bool save)
     cursor_toggle_time = osGetTime();
     cursor_on = true;
     any_change = true;
+    error_eq = false;
     selection = SelectionType::BottomScreen;
 }
 void Keyboard::start_calculating()
 {
+    error_eq = false;
     calculating_flag.store(true);
     if(!calcThread)
     {
