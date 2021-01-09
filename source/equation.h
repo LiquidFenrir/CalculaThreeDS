@@ -105,8 +105,11 @@ struct PartPos {
     int part{-1}, pos{-1};
 };
 struct Number {
-    double value{};
+    double value;
     void render(C2D_SpriteSheet sprites) const;
+    Number(std::string_view in_val);
+    Number(double in_val);
+    Number();
 };
 
 struct Equation {

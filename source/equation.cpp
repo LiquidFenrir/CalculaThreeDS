@@ -3,12 +3,12 @@
 #include "text.h"
 #include "colors.h"
 #include <algorithm>
-#include <climits>
+#include <cmath>
 
 void Number::render(C2D_SpriteSheet sprites) const
 {
     char floattextbuf[64];
-    std::snprintf(floattextbuf, 63, "%.6g", value);
+    std::snprintf(floattextbuf, 63, "%.11g", std::round(value * 10000.0)/10000.0);
 
     C2D_ImageTint text_tint;
     C2D_PlainImageTint(&text_tint, COLOR_BLACK, 1.0f);
@@ -23,6 +23,20 @@ void Number::render(C2D_SpriteSheet sprites) const
         C2D_DrawImageAt(img, 400 - w + x, Equation::EQU_REGION_HEIGHT + (40 - img.subtex->height)/2, 1.0f, &text_tint);
         x += 13;
     }
+}
+
+Number::Number(std::string_view in_val)
+{
+    std::string in_val_s(in_val);
+    value = std::stod(in_val_s);
+}
+Number::Number(double in_val) : value(in_val)
+{
+
+}
+Number::Number() : value(0.0)
+{
+
 }
 
 Equation::Equation() : parts(3)
@@ -581,13 +595,418 @@ void Equation::optimize()
 
 std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& variables, int& error_part, int& error_position)
 {
-    struct Node {
-        std::string value;
-        int next_A;
-        int next_B;
+    #define ERROR_AT(part, pos) { error_part = part; error_position = pos; return {}; }
+
+    fprintf(stderr, "token stage\n");
+    struct Token {
+        enum class Type {
+            Number,
+            Variable,
+            Function,
+            Operator,
+            ParenOpen,
+            ParenClose,
+        };
+
+        std::string_view value;
+        int part, position;
+        Type type;
+    };
+    const auto base_tokens = [&, this]() -> std::vector<Token> {
+        std::vector<Token> toks;
+        int start = 0;
+        int len = 0;
+        int tmp_is_num = -1;
+
+        int current_idx = 0;
+        while(current_idx != -1)
+        {
+            const auto& p = parts[current_idx];
+            fprintf(stderr, "entering node %d: special %d pos %d\n", current_idx, int(p.meta.special), int(p.meta.position));
+            if(p.meta.special != Part::Specialty::None)
+            {
+                if(p.meta.special == Part::Specialty::TempParen)
+                {
+                    ERROR_AT(p.meta.next, 0);
+                }
+                else if(p.meta.special == Part::Specialty::Absolute)
+                {
+                    if(p.meta.position == Part::Position::Start)
+                    {
+                        toks.push_back(Token{"abs", p.meta.next, 0, Token::Type::Function});
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
+                    }
+                    else
+                    {
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenClose});
+                    }
+                }
+                else if(p.meta.special == Part::Specialty::Root)
+                {
+                    if(p.meta.position == Part::Position::Start)
+                    {
+                        toks.push_back(Token{"sqrt", p.meta.next, 0, Token::Type::Function});
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
+                    }
+                    else
+                    {
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenClose});
+                    }
+                }
+                else if(p.meta.special == Part::Specialty::Paren)
+                {
+                    if(p.meta.position == Part::Position::Start)
+                    {
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
+                    }
+                    else
+                    {
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenClose});
+                    }
+                }
+                else if(p.meta.special == Part::Specialty::Exponent)
+                {
+                    if(p.meta.position == Part::Position::Start)
+                    {
+                        if(const auto& b = toks.back(); b.value == "e" && b.type == Token::Type::Variable)
+                            toks.push_back(Token{"exp", b.part, b.position, Token::Type::Function});
+                        else
+                            toks.push_back(Token{"^", p.meta.next, 0, Token::Type::Operator});
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
+                    }
+                    else
+                    {
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenClose});
+                    }
+                }
+                else if(p.meta.special == Part::Specialty::Fraction)
+                {
+                    if(p.meta.position == Part::Position::Start)
+                    {
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
+                    }
+                    else if(p.meta.position == Part::Position::Middle)
+                    {
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenClose});
+                        toks.push_back(Token{"/", p.meta.next, 0, Token::Type::Operator});
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
+                    }
+                    else
+                    {
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenClose});
+                    }
+                }
+            }
+            else
+            {
+                int pos = 0;
+                const char* beg = p.value.c_str();
+                fprintf(stderr, "entering node %d: %s\n", current_idx, beg);
+                for(const char c : p.value)
+                {
+                    if(('0' <= c && c <= '9') || c == '.')
+                    {
+                        if(tmp_is_num == 1)
+                        {
+                            ++len;
+                        }
+                        else
+                        {
+                            if(len != 0)
+                            {
+                                toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, Token::Type::Variable});
+                            }
+
+                            start = pos;
+                            len = 1;
+                            tmp_is_num = 1;
+                        }
+                    }
+                    else if(('a' <= c && c <= 'z') || c == 'P')
+                    {
+                        if(tmp_is_num == 0)
+                        {
+                            ++len;
+                        }
+                        else
+                        {
+                            if(len != 0)
+                            {
+                                toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, Token::Type::Number});
+                            }
+
+                            start = pos;
+                            len = 1;
+                            tmp_is_num = 0;
+                        }
+                    }
+                    else
+                    {
+                        if(len != 0)
+                        {
+                            toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, tmp_is_num ? Token::Type::Number : Token::Type::Variable});
+                        }
+
+                        start = 0;
+                        len = 0;
+                        tmp_is_num = -1;
+
+                        toks.push_back(Token{std::string_view{beg + pos, 1}, current_idx, pos, Token::Type::Operator});
+                    }
+
+                    ++pos;
+                }
+
+                if(tmp_is_num == 0)
+                {
+                    if(const auto& pn = parts[p.meta.next].meta; pn.position == Part::Position::Start && pn.special == Part::Specialty::Paren)
+                    {
+                        toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, Token::Type::Function});
+                    }
+                    else
+                    {
+                        toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, Token::Type::Variable});
+                    }
+                }
+                else if(tmp_is_num == 1)
+                {
+                    toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, Token::Type::Number});
+                }
+
+                start = 0;
+                len = 0;
+                tmp_is_num = -1;
+            }
+            current_idx = p.meta.next;
+        }
+
+        return toks;
+    }();
+    if(base_tokens.empty()) return std::make_pair(Number{}, true);
+
+    fprintf(stderr, "rpn stage\n");
+    const auto final_rpn = [&]() -> std::vector<const Token*> {
+        std::vector<const Token*> postfix;
+        std::vector<const Token*> opstack;
+
+        const auto get_prec = [](std::string_view op) -> int {
+            switch(op.front())
+            {
+                case '^': return 4;
+                case '*': return 3;
+                case '/': return 3;
+                case '+': return 2;
+                case '-': return 2;
+                case '>': return 1;
+                default: return 0;
+            }
+        };
+
+        const auto get_assoc = [](std::string_view op) -> bool {
+            return op.front() == '^';
+        };
+
+        for(const Token& tok : base_tokens)
+        {
+            if(tok.type == Token::Type::Variable || tok.type == Token::Type::Number)
+            {
+                postfix.push_back(&tok);
+            }
+            else if(tok.type == Token::Type::ParenOpen)
+            {
+                opstack.push_back(&tok);
+            }
+            else if(tok.type == Token::Type::ParenClose)
+            {
+                while(opstack.size() && opstack.back()->type != Token::Type::ParenOpen)
+                {
+                    postfix.push_back(opstack.back());
+                    opstack.pop_back();
+                }
+
+                opstack.pop_back();  // open paren (mismatch cannot happen)
+            }
+            else if(tok.type == Token::Type::Function)
+            {
+                opstack.push_back(&tok);
+            }
+            else if(tok.type == Token::Type::Operator)
+            {
+                auto prec = get_prec(tok.value);
+                while(opstack.size())
+                {
+                    if(const Token* op = opstack.back();
+                        op->type != Token::Type::ParenOpen && (
+                            op->type == Token::Type::Function ||
+                            get_prec(op->value) > prec ||
+                            (get_prec(op->value) == prec && get_assoc(op->value))
+                        )
+                    )
+                    {
+                        postfix.push_back(op);
+                        opstack.pop_back();
+                    }
+                    else
+                        break;
+                }
+                opstack.push_back(&tok);
+            }
+        }
+
+        while(opstack.size())
+        {
+            postfix.push_back(opstack.back());
+            opstack.pop_back();
+        }
+
+        return postfix;
+    }();
+    if(final_rpn.empty()) std::make_pair(Number{}, true);
+
+    fprintf(stderr, "eval stage\n");
+    #undef ERROR_AT
+    #define ERROR_AT(part, pos) { error_part = part; error_position = pos; return std::make_pair(Number{}, true); }
+
+    struct Value {
+        Number val;
+        std::string_view assoc_variable;
+
+        Value(std::string_view v) : val(v) { }
+        Value(double v) : val(v) { }
+        Value(Number v, std::string_view a) : val(v), assoc_variable(a) { }
+    };
+    const auto get_var = [&](std::string_view name) -> Value {
+        if(auto it = variables.find(std::string(name)); it != variables.end())
+        {
+            return {it->second, name};
+        }
+        return {{}, name};
     };
 
-    return {{}, false};
+    #define MK_WRAPPER_FN(fname, fn) {#fname, [](std::vector<Value>& vals) { \
+        vals.back() = Value(std::fn(vals.back().val.value)); \
+    }}
+    #define MK_WRAPPER(fname) MK_WRAPPER_FN(fname, fname)
+
+    const std::map<std::string_view, void(*)(std::vector<Value>&)> function_handlers{
+        MK_WRAPPER(abs),
+        MK_WRAPPER(sqrt),
+        MK_WRAPPER(tan),
+        MK_WRAPPER(cos),
+        MK_WRAPPER(sin),
+        MK_WRAPPER(acos),
+        MK_WRAPPER(asin),
+        MK_WRAPPER(atan),
+        MK_WRAPPER_FN(ln, log),
+        MK_WRAPPER_FN(log, log10),
+    };
+
+    std::vector<Value> value_stack;
+    for(const Token* tok : final_rpn)
+    {
+        if(tok->type == Token::Type::Number)
+        {
+            if(tok->value.front() == '.' || tok->value.back() == '.')
+            {
+                ERROR_AT(tok->part, tok->position);
+            }
+            else
+            {
+                value_stack.emplace_back(tok->value);
+            }
+        }
+        else if(tok->type == Token::Type::Variable)
+        {
+            if(tok->value == "P")
+            {
+                value_stack.emplace_back(M_PI);
+            }
+            else if(tok->value == "e")
+            {
+                value_stack.emplace_back(std::exp(1.0));
+            }
+            else
+            {
+                value_stack.push_back(get_var(tok->value));
+            }
+        }
+        else if(tok->type == Token::Type::Operator)
+        {
+            switch(tok->value.front())
+            {
+                case '+':
+                {
+                    const Value left = value_stack.back();
+                    value_stack.pop_back();
+                    const Value right = value_stack.back();
+                    value_stack.pop_back();
+
+                    value_stack.emplace_back(left.val.value + right.val.value);
+                }
+                break;
+                case '-':
+                {
+                    const Value left = value_stack.back();
+                    value_stack.pop_back();
+                    const Value right = value_stack.back();
+                    value_stack.pop_back();
+
+                    value_stack.emplace_back(right.val.value - left.val.value);
+                }
+                break;
+                case '*':
+                {
+                    const Value left = value_stack.back();
+                    value_stack.pop_back();
+                    const Value right = value_stack.back();
+                    value_stack.pop_back();
+
+                    value_stack.emplace_back(left.val.value * right.val.value);
+                }
+                break;
+                case '/':
+                {
+                    const Value left = value_stack.back();
+                    value_stack.pop_back();
+                    const Value right = value_stack.back();
+                    value_stack.pop_back();
+
+                    value_stack.emplace_back(right.val.value / left.val.value);
+                }
+                break;
+                case '^':
+                {
+                    const Value left = value_stack.back();
+                    value_stack.pop_back();
+                    const Value right = value_stack.back();
+                    value_stack.pop_back();
+
+                    value_stack.emplace_back(std::pow(right.val.value, left.val.value));
+                }
+                break;
+                case '>':
+                {
+                    const Value left = value_stack.back();
+                    value_stack.pop_back();
+                    const Value right = value_stack.back();
+                    value_stack.pop_back();
+                    variables.try_emplace(std::string(left.assoc_variable), right.val.value);
+                    value_stack.push_back(right);
+                }
+                break;
+            }
+        }
+        else if(tok->type == Token::Type::Function)
+        {
+            if(auto it = function_handlers.find(tok->value); it != function_handlers.end())
+            {
+                it->second(value_stack);
+            }
+        }
+    }
+
+    return {value_stack.back().val, false};
+    #undef ERROR_AT
 }
 
 int Equation::set_special(const int current_part_id, const int at_position, const Part::Specialty special)
