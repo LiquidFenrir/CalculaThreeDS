@@ -793,17 +793,12 @@ bool Equation::remove_at(int& current_part_id, int& at_position)
         };
 
         Part::Meta start_meta = parts[parts[current_part_id].meta.before].meta; // select the special chunk before the writing area we're in
-        if(start_meta.special == Part::Specialty::Equation) // Don't allow deleting the first chunk
-        {
-            return false;
-        }
-        else if(start_meta.special == Part::Specialty::Fraction)
-        {
-            if(start_meta.position != Part::Position::Start)
-            {
-                return false;
-            }
+        
+        // Don't allow deleting the first chunk or chunks we're after the end of. chunks have to be deleted from the front of the inside
+        if((!(start_meta.special == Part::Specialty::Paren || start_meta.special == Part::Specialty::TempParen) && check_pos_is(start_meta.position, Part::Position::End)) || start_meta.special == Part::Specialty::Equation) return false;
 
+        if(start_meta.special == Part::Specialty::Fraction)
+        {
             Part::Meta middle_meta = parts[start_meta.assoc].meta;
             Part::Meta end_meta = parts[middle_meta.assoc].meta;
 
