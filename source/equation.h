@@ -40,7 +40,7 @@ public:
 };
 
 struct Part {
-    enum class Specialty : unsigned char {
+    enum class Specialty : unsigned short {
         None = 0,
         Equation = 1,
         Fraction = 2,

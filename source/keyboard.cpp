@@ -80,11 +80,19 @@ static int add_division(Equation& e, int& cur_char, int& cur_part)
 }
 static int add_exponent(Equation& e, int& cur_char, int& cur_part)
 {
-    e.add_part_at(cur_part, cur_char, Part::Specialty::Exponent, Part::Position::Start);
+    e.add_part_at(cur_part, cur_char, Part::Specialty::Exponent, Part::Position::Start); // add exponent start at location
     const auto assoc_s = cur_part;
-    e.add_part_at(cur_part, cur_char);
+    e.add_part_at(cur_part, cur_char); // add text area after exponent start
     const auto cp_part = cur_part;
     const auto cp_char = cur_char;
+    // if location was right before an exponent start, we still have one right after current added part.
+    // thus, we need to add an empty text area after its end, then add the current exponent's end after that
+    if(const auto m = e.parts[e.parts[cur_part].meta.next].meta; m.special == Part::Specialty::Exponent && m.position == Part::Position::Start)
+    {
+        cur_part = m.assoc;
+        cur_char = 0; // we're on a control chunk, length is 0
+        e.add_part_at(cur_part, cur_char); // add text area after exponent start
+    }
     const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, Part::Specialty::Exponent, Part::Position::End, assoc_s);
     e.parts[assoc_s].meta.assoc = cur_part;
     if(!have_any_after)
