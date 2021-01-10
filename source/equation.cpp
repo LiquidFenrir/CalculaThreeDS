@@ -634,6 +634,10 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                 {
                     if(p.meta.position == Part::Position::Start)
                     {
+                        if(toks.size() && (toks.back().type == Token::Type::Variable || toks.back().type == Token::Type::Number))
+                        {
+                            toks.push_back(Token{"*", toks.back().part, toks.back().position, Token::Type::Operator});
+                        }
                         toks.push_back(Token{"sqrt", p.meta.next, 0, Token::Type::Function});
                         toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
                     }
@@ -658,6 +662,10 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                 {
                     if(p.meta.position == Part::Position::Start)
                     {
+                        if(toks.size() && (toks.back().type == Token::Type::Variable || toks.back().type == Token::Type::Number))
+                        {
+                            toks.push_back(Token{"*", toks.back().part, toks.back().position, Token::Type::Operator});
+                        }
                         toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
                     }
                     else
@@ -684,6 +692,10 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                 {
                     if(p.meta.position == Part::Position::Start)
                     {
+                        if(toks.size() && (toks.back().type == Token::Type::Variable || toks.back().type == Token::Type::Number))
+                        {
+                            toks.push_back(Token{"*", toks.back().part, toks.back().position, Token::Type::Operator});
+                        }
                         toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
                     }
                     else if(p.meta.position == Part::Position::Middle)
@@ -714,6 +726,10 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                         {
                             if(len != 0)
                             {
+                                if(toks.size() && toks.back().type == Token::Type::ParenClose)
+                                {
+                                    toks.push_back(Token{"*", current_idx, start, Token::Type::Operator});
+                                }
                                 toks.push_back(Token{{beg + start, size_t(len)}, current_idx, start, Token::Type::Variable});
                                 toks.push_back(Token{"*", current_idx, start, Token::Type::Operator});
                             }
@@ -733,6 +749,10 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                         {
                             if(len != 0)
                             {
+                                if(toks.size() && toks.back().type == Token::Type::ParenClose)
+                                {
+                                    toks.push_back(Token{"*", current_idx, start, Token::Type::Operator});
+                                }
                                 toks.push_back(Token{{beg + start, size_t(len)}, current_idx, start, Token::Type::Number});
                                 toks.push_back(Token{"*", current_idx, start, Token::Type::Operator});
                             }
@@ -763,7 +783,15 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                 {
                     if(const auto& pn = parts[p.meta.next].meta; pn.position == Part::Position::Start && pn.special == Part::Specialty::Paren)
                     {
-                        toks.push_back(Token{{beg + start, size_t(len)}, current_idx, start, Token::Type::Function});
+                        if(len == 1 || std::string_view{beg + start, size_t(len)} == "ans") // 1 letter names can only be variables
+                        {
+                            toks.push_back(Token{{beg + start, size_t(len)}, current_idx, start, Token::Type::Variable});
+                            toks.push_back(Token{"*", current_idx, start, Token::Type::Operator});
+                        }
+                        else
+                        {
+                            toks.push_back(Token{{beg + start, size_t(len)}, current_idx, start, Token::Type::Function});
+                        }
                     }
                     else
                     {
