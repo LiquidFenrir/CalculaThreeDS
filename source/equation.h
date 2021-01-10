@@ -7,6 +7,7 @@
 #include <array>
 #include <string>
 #include <citro2d.h>
+#include "number.h"
 
 class Tex {
     C3D_Tex t;
@@ -47,9 +48,10 @@ struct Part {
         Fraction = BIT(1),
         Exponent = BIT(2),
         Absolute = BIT(3),
-        Root = BIT(4),
-        Paren = BIT(5),
-        TempParen = BIT(6),
+        Conjugate = BIT(4),
+        Root = BIT(5),
+        Paren = BIT(6),
+        TempParen = BIT(7),
     };
     enum class Position : unsigned char {
         None = 0,
@@ -104,13 +106,6 @@ inline bool check_pos_is(Part::Position v, Part::Position other)
 struct PartPos {
     int part{-1}, pos{-1};
 };
-struct Number {
-    double value;
-    void render(C2D_SpriteSheet sprites) const;
-    Number(std::string_view in_val);
-    Number(double in_val);
-    Number();
-};
 
 struct Equation {
     struct RenderResult {
@@ -118,7 +113,6 @@ struct Equation {
         int cursor_x, cursor_y;
         bool cursor_visible;
     };
-    static inline constexpr int EQU_REGION_HEIGHT = 80;
 
     RenderResult render_main(const int x, const int y, const int editing_part, const int editing_char, C2D_SpriteSheet sprites, PartPos* screen);
     RenderResult render_memory(const int x, const int y, C2D_SpriteSheet sprites);

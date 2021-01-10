@@ -58,7 +58,7 @@ private:
     int editing_part;
     int editing_char;
     int at_x, at_y;
-    std::array<PartPos, 320 * Equation::EQU_REGION_HEIGHT> screen_data;
+    std::array<PartPos, 320 * EQU_REGION_HEIGHT> screen_data;
     Equation::RenderResult render_result;
     mutable u64 cursor_toggle_time;
     mutable bool cursor_on;

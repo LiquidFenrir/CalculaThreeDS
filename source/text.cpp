@@ -37,6 +37,7 @@ void TextMap::generate(C2D_SpriteSheet sprites)
     }
 
     { // functions
+    // exponential
     menu.insert_or_assign("exp", TextMapEntry({
         C2D_SpriteSheetGetImage(sprites, sprites_exp_idx),
     }));
@@ -49,9 +50,7 @@ void TextMap::generate(C2D_SpriteSheet sprites)
         C2D_SpriteSheetGetImage(sprites, sprites_o_idx),
         C2D_SpriteSheetGetImage(sprites, sprites_g_idx),
     }));
-    menu.insert_or_assign("abs", TextMapEntry({
-        C2D_SpriteSheetGetImage(sprites, sprites_abs_idx),
-    }));
+    // trigonometric
     menu.insert_or_assign("acos", TextMapEntry({
         C2D_SpriteSheetGetImage(sprites, sprites_a_idx),
         C2D_SpriteSheetGetImage(sprites, sprites_c_idx),
@@ -85,23 +84,55 @@ void TextMap::generate(C2D_SpriteSheet sprites)
         C2D_SpriteSheetGetImage(sprites, sprites_a_idx),
         C2D_SpriteSheetGetImage(sprites, sprites_n_idx),
     }));
-    menu.insert_or_assign("csc", TextMapEntry({
-        C2D_SpriteSheetGetImage(sprites, sprites_c_idx),
-        C2D_SpriteSheetGetImage(sprites, sprites_s_idx),
-        C2D_SpriteSheetGetImage(sprites, sprites_c_idx),
-    }));
-    menu.insert_or_assign("sec", TextMapEntry({
-        C2D_SpriteSheetGetImage(sprites, sprites_s_idx),
-        C2D_SpriteSheetGetImage(sprites, sprites_e_idx),
-        C2D_SpriteSheetGetImage(sprites, sprites_c_idx),
-    }));
-    menu.insert_or_assign("cot", TextMapEntry({
+    // hyperbolic
+    menu.insert_or_assign("acosh", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_a_idx),
         C2D_SpriteSheetGetImage(sprites, sprites_c_idx),
         C2D_SpriteSheetGetImage(sprites, sprites_o_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_s_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_h_idx),
+    }));
+    menu.insert_or_assign("asinh", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_a_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_s_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_i_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_n_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_h_idx),
+    }));
+    menu.insert_or_assign("atanh", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_a_idx),
         C2D_SpriteSheetGetImage(sprites, sprites_t_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_a_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_n_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_h_idx),
+    }));
+    menu.insert_or_assign("cosh", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_c_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_o_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_s_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_h_idx),
+    }));
+    menu.insert_or_assign("sinh", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_s_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_i_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_n_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_h_idx),
+    }));
+    menu.insert_or_assign("tanh", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_t_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_a_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_n_idx),
+        C2D_SpriteSheetGetImage(sprites, sprites_h_idx),
+    }));
+    // other
+    menu.insert_or_assign("abs", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_abs_idx),
     }));
     menu.insert_or_assign("sqrt", TextMapEntry({
         C2D_SpriteSheetGetImage(sprites, sprites_root_idx),
+    }));
+    menu.insert_or_assign("conj", TextMapEntry({
+        C2D_SpriteSheetGetImage(sprites, sprites_conj_idx),
     }));
     }
 

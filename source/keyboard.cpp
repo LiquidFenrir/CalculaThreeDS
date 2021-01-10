@@ -51,7 +51,7 @@ private:
 };
 
 static constexpr int EQU_GAP_END = (240 - (KeyboardScreen::H * 36));
-static constexpr int EQU_GAP_HEIGHT = EQU_GAP_END - Equation::EQU_REGION_HEIGHT;
+static constexpr int EQU_GAP_HEIGHT = EQU_GAP_END - EQU_REGION_HEIGHT;
 
 static int complete_equ(Equation& e, int& cur_char, int& cur_part)
 {
@@ -105,21 +105,27 @@ static int add_exponent(Equation& e, int& cur_char, int& cur_part)
 }
 static void add_paren(Equation& e, int& cur_char, int& cur_part, const Part::Position direction)
 {
+    const int before_id = e.parts[cur_part].meta.before;
     const auto [have_any_before, have_any_after] = e.add_part_at(cur_part, cur_char, Part::Specialty::TempParen, direction);
     const int cp_part = cur_part;
+    if(!have_any_before)
+    {
+        cur_part = before_id;
+        e.add_part_at(cur_part, cur_char);
+    }
+
     if(!have_any_after)
     {
+        cur_part = cp_part;
         e.add_part_at(cur_part, cur_char);
     }
     else
     {
+        cur_part = cp_part;
         e.right_of(cur_part, cur_char);
     }
 
-    if(e.parts[cp_part].meta.assoc == -1)
-    {
-        e.find_matching_tmp_paren(cp_part);
-    }
+    e.find_matching_tmp_paren(cp_part);
 }
 static int add_start_paren(Equation& e, int& cur_char, int& cur_part)
 {
@@ -172,6 +178,12 @@ static int add_root(Equation& e, int& cur_char, int& cur_part)
     add_special(e, cur_char, cur_part, Part::Specialty::Root);
     return 1;
 }
+static int add_conj(Equation& e, int& cur_char, int& cur_part)
+{
+    add_special(e, cur_char, cur_part, Part::Specialty::Conjugate);
+    return 1;
+}
+
 static int remove_char(Equation& e, int& cur_char, int& cur_part)
 {
     return e.remove_at(cur_part, cur_char);
@@ -211,8 +223,8 @@ static constexpr auto keyboard_screens = []() constexpr -> std::array<KeyboardSc
     constexpr std::array<std::array<P_t, KeyboardScreen::W>, KeyboardScreen::H> funcs_data{{
         {{ADD_CHAR("cos"), ADD_CHAR("sin"), ADD_CHAR("tan"), {"exp", add_exponential}, {"abs", add_absolute}}},
         {{ADD_CHAR("acos"), ADD_CHAR("asin"), ADD_CHAR("atan"), ADD_CHAR("ln"), {"sqrt", add_root}}},
-        {{ADD_CHAR("cot"), ADD_CHAR("sec"), ADD_CHAR("csc"), ADD_CHAR("log"), empty_button}},
-        {{empty_button, empty_button, empty_button, empty_button, empty_button}},
+        {{ADD_CHAR("cosh"), ADD_CHAR("sinh"), ADD_CHAR("tanh"), ADD_CHAR("log"), {"conj", add_conj}}},
+        {{ADD_CHAR("acosh"), ADD_CHAR("asinh"), ADD_CHAR("atanh"), empty_button, empty_button}},
     }};
     auto& funcs = out[int(KeyboardScreen::Type::Functions)];
     DO_PART(funcs, "functions", funcs_data)
@@ -220,8 +232,8 @@ static constexpr auto keyboard_screens = []() constexpr -> std::array<KeyboardSc
     constexpr std::array<std::array<P_t, KeyboardScreen::W>, KeyboardScreen::H> vars_data{{
         {{ADD_CHAR("a"), {"pi", ADD_CHAR_F("P")}, ADD_CHAR("k"), ADD_CHAR("f"), ADD_CHAR("x")}},
         {{ADD_CHAR("b"), ADD_CHAR("ans"), ADD_CHAR("l"), ADD_CHAR("g"), ADD_CHAR("y")}},
-        {{ADD_CHAR("c"), ADD_CHAR("i"), ADD_CHAR("m"), ADD_CHAR("h"), ADD_CHAR("z")}},
-        {{ADD_CHAR("d"), ADD_CHAR("j"), ADD_CHAR("n"), empty_button, ADD_CHAR(">")}},
+        {{ADD_CHAR("c"), ADD_CHAR("i"), ADD_CHAR("m"), ADD_CHAR("h"), empty_button}},
+        {{ADD_CHAR("d"), empty_button, ADD_CHAR("n"), empty_button, ADD_CHAR(">")}},
     }};
     auto& vars = out[int(KeyboardScreen::Type::Variables)];
     DO_PART(vars, "variables", vars_data)
@@ -267,9 +279,9 @@ void Keyboard::calculation_loop(void* arg)
 #define REMOVE_ODD(v) (((v) & ~1) + (((v) & 1) << 1))
 #define MK_SUBTEX(w, h, w2, h2) {(w), REMOVE_ODD(h), 0.0f, 1.0f, ((w)/(w2)), 1.0f - (REMOVE_ODD(h)/(h2))}
 #define MK_SUBTEX_OFFSET(w, h, w2, h2, oX, oY) {(w), REMOVE_ODD(h), ((oX)/(w2)), 1.0f - (REMOVE_ODD(oY)/(h2)), ((w)/(w2)), 1.0f - (REMOVE_ODD(oY)/(h2)) - (REMOVE_ODD(h)/(h2))}
-static constexpr Tex3DS_SubTexture EQUATION_SUBTEX = MK_SUBTEX(320, Equation::EQU_REGION_HEIGHT, 512.0f, 128.0f);
-static constexpr Tex3DS_SubTexture EQUATION_MEM_SUBTEX = MK_SUBTEX_OFFSET(400, Equation::EQU_REGION_HEIGHT, 512.0f, 128.0f, 0, 0);
-static constexpr Tex3DS_SubTexture ANSWER_MEM_SUBTEX = MK_SUBTEX_OFFSET(400, 120 - Equation::EQU_REGION_HEIGHT, 512.0f, 128.0f, 0, Equation::EQU_REGION_HEIGHT);
+static constexpr Tex3DS_SubTexture EQUATION_SUBTEX = MK_SUBTEX(320, EQU_REGION_HEIGHT, 512.0f, 128.0f);
+static constexpr Tex3DS_SubTexture EQUATION_MEM_SUBTEX = MK_SUBTEX_OFFSET(400, EQU_REGION_HEIGHT, 512.0f, 128.0f, 0, 0);
+static constexpr Tex3DS_SubTexture ANSWER_MEM_SUBTEX = MK_SUBTEX_OFFSET(400, 120 - EQU_REGION_HEIGHT, 512.0f, 128.0f, 0, EQU_REGION_HEIGHT);
 #undef MK_SUBTEX_OFFSET
 #undef MK_SUBTEX
 #undef REMOVE_ODD
@@ -417,7 +429,7 @@ void Keyboard::handle_circle_pad(const int x, const int y)
 
         if(y < -20)
         {
-            if((std::min(-Equation::EQU_REGION_HEIGHT/2, render_result.min_y) + Equation::EQU_REGION_HEIGHT/2) < at_y)
+            if((std::min(-EQU_REGION_HEIGHT/2, render_result.min_y) + EQU_REGION_HEIGHT/2) < at_y)
             {
                 any_change = true;
                 at_y -= 2;
@@ -425,7 +437,7 @@ void Keyboard::handle_circle_pad(const int x, const int y)
         }
         else if(y > 20)
         {
-            if(((std::max(Equation::EQU_REGION_HEIGHT/2, render_result.max_y) - Equation::EQU_REGION_HEIGHT/2) > at_y))
+            if(((std::max(EQU_REGION_HEIGHT/2, render_result.max_y) - EQU_REGION_HEIGHT/2) > at_y))
             {
                 any_change = true;
                 at_y += 2;
@@ -448,7 +460,7 @@ void Keyboard::handle_circle_pad(const int x, const int y)
 }
 void Keyboard::handle_touch(const int x, const int y)
 {
-    if(y < Equation::EQU_REGION_HEIGHT)
+    if(y < EQU_REGION_HEIGHT)
     {
         const auto& pos = screen_data[x + y * 320];
         if(pos.part != -1 && pos.pos != -1 && (pos.part != editing_part || pos.pos != editing_char))
@@ -458,7 +470,7 @@ void Keyboard::handle_touch(const int x, const int y)
             any_change = true;
         }
     }
-    else if(Equation::EQU_REGION_HEIGHT <= y && y < EQU_GAP_END)
+    else if(EQU_REGION_HEIGHT <= y && y < EQU_GAP_END)
     {
         if(x < 10)
         {
@@ -545,32 +557,32 @@ void Keyboard::draw_memory(C2D_SpriteSheet sprites) const
 
     const auto draw_mem_at = [&](Tex& t, const int y, const MemoryLine& l) {
         C2D_DrawRectSolid(0, y - 1, 0.5f, 400, 1, COLOR_BLACK);
-        C2D_DrawRectSolid(0, y + Equation::EQU_REGION_HEIGHT, 0.0f, 400, 40, COLOR_GRAY);
-        C2D_DrawRectSolid(0, y + Equation::EQU_REGION_HEIGHT, 0.5f, 400, 1, COLOR_BLACK);
+        C2D_DrawRectSolid(0, y + EQU_REGION_HEIGHT, 0.0f, 400, 40, COLOR_GRAY);
+        C2D_DrawRectSolid(0, y + EQU_REGION_HEIGHT, 0.5f, 400, 1, COLOR_BLACK);
 
         C2D_DrawImageAt(C2D_Image{t.get_tex(), &EQUATION_MEM_SUBTEX}, 0.0f, y, 0.25f);
-        C2D_DrawImageAt(C2D_Image{t.get_tex(), &ANSWER_MEM_SUBTEX}, 0.0f, y + Equation::EQU_REGION_HEIGHT, 0.25f);
+        C2D_DrawImageAt(C2D_Image{t.get_tex(), &ANSWER_MEM_SUBTEX}, 0.0f, y + EQU_REGION_HEIGHT, 0.25f);
 
         if(l.render_res.w > 400 && l.at_x < (l.render_res.w - 400))
         {
             const auto spr = C2D_SpriteSheetGetImage(sprites, sprites_arrow_right_idx);
-            C2D_DrawImageAt(spr, 400 - spr.subtex->width, y + (Equation::EQU_REGION_HEIGHT - spr.subtex->height) / 2.0f, 0.5f, &arrow_tint);
+            C2D_DrawImageAt(spr, 400 - spr.subtex->width, y + (EQU_REGION_HEIGHT - spr.subtex->height) / 2.0f, 0.5f, &arrow_tint);
         }
         if(l.at_x != 0)
         {
             const auto spr = C2D_SpriteSheetGetImage(sprites, sprites_arrow_left_idx);
-            C2D_DrawImageAt(spr, 0.0f, y + (Equation::EQU_REGION_HEIGHT - spr.subtex->height) / 2.0f, 0.5f, &arrow_tint);
+            C2D_DrawImageAt(spr, 0.0f, y + (EQU_REGION_HEIGHT - spr.subtex->height) / 2.0f, 0.5f, &arrow_tint);
         }
 
-        if((std::max(Equation::EQU_REGION_HEIGHT/2, l.render_res.max_y) - Equation::EQU_REGION_HEIGHT/2) > l.at_y)
+        if((std::max(EQU_REGION_HEIGHT/2, l.render_res.max_y) - EQU_REGION_HEIGHT/2) > l.at_y)
         {
             const auto spr = C2D_SpriteSheetGetImage(sprites, sprites_arrow_up_idx);
             C2D_DrawImageAt(spr, (400.0f - spr.subtex->width)/2.0f, y, 0.5f, &arrow_tint);
         }
-        if((std::min(-Equation::EQU_REGION_HEIGHT/2, l.render_res.min_y) + Equation::EQU_REGION_HEIGHT/2) < l.at_y)
+        if((std::min(-EQU_REGION_HEIGHT/2, l.render_res.min_y) + EQU_REGION_HEIGHT/2) < l.at_y)
         {
             const auto spr = C2D_SpriteSheetGetImage(sprites, sprites_arrow_down_idx);
-            C2D_DrawImageAt(spr, (400.0f - spr.subtex->width)/2.0f, y + Equation::EQU_REGION_HEIGHT - spr.subtex->height, 0.5f, &arrow_tint);
+            C2D_DrawImageAt(spr, (400.0f - spr.subtex->width)/2.0f, y + EQU_REGION_HEIGHT - spr.subtex->height, 0.5f, &arrow_tint);
         }
     };
 
@@ -603,7 +615,7 @@ void Keyboard::draw(C2D_SpriteSheet sprites) const
 
     if(cursor_on && render_result.cursor_visible)
     {
-        const int h = (render_result.cursor_y + 24) > Equation::EQU_REGION_HEIGHT ? (Equation::EQU_REGION_HEIGHT - render_result.cursor_y) : 24;
+        const int h = (render_result.cursor_y + 24) > EQU_REGION_HEIGHT ? (EQU_REGION_HEIGHT - render_result.cursor_y) : 24;
         C2D_DrawRectSolid(render_result.cursor_x, render_result.cursor_y, 0.25f, 2.0f, h, C2D_Color32(0,0,0,255));
     }
 
@@ -618,26 +630,26 @@ void Keyboard::draw(C2D_SpriteSheet sprites) const
     if(render_result.w > 320 && at_x < (render_result.w - 320))
     {
         const auto spr = C2D_SpriteSheetGetImage(sprites, sprites_arrow_right_idx);
-        C2D_DrawImageAt(spr, 320 - spr.subtex->width, (Equation::EQU_REGION_HEIGHT - spr.subtex->height) / 2.0f, 0.5f, &arrow_tint);
+        C2D_DrawImageAt(spr, 320 - spr.subtex->width, (EQU_REGION_HEIGHT - spr.subtex->height) / 2.0f, 0.5f, &arrow_tint);
     }
     if(at_x != 0)
     {
         const auto spr = C2D_SpriteSheetGetImage(sprites, sprites_arrow_left_idx);
-        C2D_DrawImageAt(spr, 0.0f, (Equation::EQU_REGION_HEIGHT - spr.subtex->height) / 2.0f, 0.5f, &arrow_tint);
+        C2D_DrawImageAt(spr, 0.0f, (EQU_REGION_HEIGHT - spr.subtex->height) / 2.0f, 0.5f, &arrow_tint);
     }
 
-    if((std::max(Equation::EQU_REGION_HEIGHT/2, render_result.max_y) - Equation::EQU_REGION_HEIGHT/2) > at_y)
+    if((std::max(EQU_REGION_HEIGHT/2, render_result.max_y) - EQU_REGION_HEIGHT/2) > at_y)
     {
         const auto spr = C2D_SpriteSheetGetImage(sprites, sprites_arrow_up_idx);
         C2D_DrawImageAt(spr, (320.0f - spr.subtex->width)/2.0f, 0, 0.5f, &arrow_tint);
     }
-    if((std::min(-Equation::EQU_REGION_HEIGHT/2, render_result.min_y) + Equation::EQU_REGION_HEIGHT/2) < at_y)
+    if((std::min(-EQU_REGION_HEIGHT/2, render_result.min_y) + EQU_REGION_HEIGHT/2) < at_y)
     {
         const auto spr = C2D_SpriteSheetGetImage(sprites, sprites_arrow_down_idx);
-        C2D_DrawImageAt(spr, (320.0f - spr.subtex->width)/2.0f, Equation::EQU_REGION_HEIGHT - spr.subtex->height, 0.5f, &arrow_tint);
+        C2D_DrawImageAt(spr, (320.0f - spr.subtex->width)/2.0f, EQU_REGION_HEIGHT - spr.subtex->height, 0.5f, &arrow_tint);
     }
 
-    C2D_DrawRectSolid(0, Equation::EQU_REGION_HEIGHT, 0.0f, 320, EQU_GAP_HEIGHT, COLOR_BLACK);
+    C2D_DrawRectSolid(0, EQU_REGION_HEIGHT, 0.0f, 320, EQU_GAP_HEIGHT, COLOR_BLACK);
 
 
     const auto& scr = keyboard_screens[selected_keyboard_screen];
@@ -670,15 +682,15 @@ void Keyboard::draw(C2D_SpriteSheet sprites) const
     for(const char c : scr.name)
     {
         const auto img = TextMap::char_to_sprite->equ.at(std::string_view(&c, 1));
-        C2D_DrawImageAt(img, x, Equation::EQU_REGION_HEIGHT + (EQU_GAP_HEIGHT - img.subtex->height)/2, 0.5f, &text_tint);
+        C2D_DrawImageAt(img, x, EQU_REGION_HEIGHT + (EQU_GAP_HEIGHT - img.subtex->height)/2, 0.5f, &text_tint);
         x += 13;
     }
 
     C2D_PlainImageTint(&arrow_tint, COLOR_GRAY, 1.0f);
     const auto arrow_left = C2D_SpriteSheetGetImage(sprites, sprites_arrow_left_idx);
     const auto arrow_right = C2D_SpriteSheetGetImage(sprites, sprites_arrow_right_idx);
-    C2D_DrawImageAt(arrow_left, 2, Equation::EQU_REGION_HEIGHT + (EQU_GAP_HEIGHT - arrow_left.subtex->height)/2, 0.5f, &arrow_tint);
-    C2D_DrawImageAt(arrow_right, 320 - 2 - arrow_right.subtex->width, Equation::EQU_REGION_HEIGHT + (EQU_GAP_HEIGHT - arrow_right.subtex->height)/2, 0.5f, &arrow_tint);
+    C2D_DrawImageAt(arrow_left, 2, EQU_REGION_HEIGHT + (EQU_GAP_HEIGHT - arrow_left.subtex->height)/2, 0.5f, &arrow_tint);
+    C2D_DrawImageAt(arrow_right, 320 - 2 - arrow_right.subtex->width, EQU_REGION_HEIGHT + (EQU_GAP_HEIGHT - arrow_right.subtex->height)/2, 0.5f, &arrow_tint);
 
 
     if(selection != SelectionType::BottomScreen)

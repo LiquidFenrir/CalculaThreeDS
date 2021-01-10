@@ -14,7 +14,7 @@ The interface is split between 4 parts:
 Intuitive touch keyboard with 3 panels:
 - basic input, for operations and digits
 - functions (don't forget to put parentheses after!)
-- user variables (13 of them) and user functions (3, TODO) with an assignment (arrow) sign that can appear anywhere in a calculation
+- user variables (10 of them) and user functions (3, TODO) with an assignment (arrow) sign that can appear anywhere in a calculation
 
 The D-PAD and touchscreen let you move the cursor after you typed things out  
 The B button or delete key will remove content  

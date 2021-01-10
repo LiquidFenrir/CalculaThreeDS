@@ -5,40 +5,9 @@
 #include <algorithm>
 #include <cmath>
 
-void Number::render(C2D_SpriteSheet sprites) const
-{
-    char floattextbuf[64];
-    const double toprint = std::round(value * 100000.0)/100000.0;
-    std::snprintf(floattextbuf, 63, "%.11g", toprint + 0.0);
-
-    C2D_ImageTint text_tint;
-    C2D_PlainImageTint(&text_tint, COLOR_BLACK, 1.0f);
-    C2D_DrawRectSolid(0, Equation::EQU_REGION_HEIGHT, 0.875f, 400, 40, COLOR_GRAY);
-
-    std::string_view sv(floattextbuf);
-    const int w = sv.size() * 13;
-    int x = 0;
-    for(const char c : sv)
-    {
-        const auto img = TextMap::char_to_sprite->equ.at(std::string_view(&c, 1));
-        C2D_DrawImageAt(img, 400 - w + x, Equation::EQU_REGION_HEIGHT + (40 - img.subtex->height)/2, 1.0f, &text_tint);
-        x += 13;
-    }
-}
-
-Number::Number(std::string_view in_val)
-{
-    std::string in_val_s(in_val);
-    value = std::stod(in_val_s);
-}
-Number::Number(double in_val) : value(in_val)
-{
-
-}
-Number::Number() : value(0.0)
-{
-
-}
+static const Number E_VAL(std::exp(1.0));
+static const Number PI_VAL(M_PI);
+static const Number I_VAL(0.0, 1.0);
 
 Equation::Equation() : parts(3)
 {
@@ -262,6 +231,20 @@ static void find_part_sizes(const std::vector<Part>& parts, std::vector<RenderPa
                     aps.content_width += 2;
                     add_content_info(aps, CA_All);
                 }
+                else if(part.meta.special == Part::Specialty::Conjugate)
+                {
+                    aps.associated = current_idx;
+                    ps.associated = associated_id;
+
+                    aps.y_start += 1;
+                    ps.y_start = aps.y_start;
+
+                    aps.paren_y_start = aps.y_start;
+                    ps.paren_y_start = aps.paren_y_start;
+                    ps.paren_y_end = aps.paren_y_end;
+
+                    add_content_info(aps, CA_All);
+                }
             }
 
             if(check_pos_is(part.meta.position, Part::Position::Start))
@@ -340,7 +323,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
     const auto set_cursor = [&](const int y) -> void {
         out.cursor_x = info.get_x();
         out.cursor_y = y;
-        if(!(out.cursor_x <= -2 || out.cursor_x >= (320 - 2) || out.cursor_y <= (-24) || out.cursor_y >= Equation::EQU_REGION_HEIGHT))
+        if(!(out.cursor_x <= -2 || out.cursor_x >= (320 - 2) || out.cursor_y <= (-24) || out.cursor_y >= EQU_REGION_HEIGHT))
         {
             out.cursor_visible = true;
         }
@@ -370,7 +353,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                         for(int y = 0; y < 24; y++)
                         {
                             const int actual_y = info.get_y(vertical_offset) + y;
-                            if(actual_y >= 0 && actual_y < Equation::EQU_REGION_HEIGHT)
+                            if(actual_y >= 0 && actual_y < EQU_REGION_HEIGHT)
                             {
                                 const int y_part = actual_y * 320;
                                 for(int x = 0; x < 13; x++)
@@ -408,7 +391,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                             for(int y = 0; y < 24; y++)
                             {
                                 const int actual_y = info.get_y(vertical_offset) + y;
-                                if(actual_y >= 0 && actual_y < Equation::EQU_REGION_HEIGHT)
+                                if(actual_y >= 0 && actual_y < EQU_REGION_HEIGHT)
                                 {
                                     const int y_part = actual_y * 320;
                                     for(int x = 0; x < 13; x++)
@@ -478,7 +461,7 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                     for(int y = 0; y < h; y++)
                     {
                         const int actual_y = info.get_y(vertical_offset) - ((part_size.paren_y_start - 1) * 24 / 2) + y;
-                        if(actual_y >= 0 && actual_y < Equation::EQU_REGION_HEIGHT)
+                        if(actual_y >= 0 && actual_y < EQU_REGION_HEIGHT)
                         {
                             const int y_part = actual_y * 320;
                             for(int x = 0; x < 13; x++)
@@ -508,6 +491,13 @@ static void render_parts(const std::vector<Part>& parts, RenderInfo& info, Equat
                     C2D_DrawRectSolid(notch_x, pixel_y, 0.125f, 2, 10, COLOR_BLACK);
                 }
                 info.current_x += 13;
+            }
+            else if(part.meta.special == Part::Specialty::Conjugate)
+            {
+                if(part.meta.position == Part::Position::Start)
+                {
+                    C2D_DrawRectSolid(info.get_x(), info.get_y(vertical_offset) - ((part_size.paren_y_start - 1) * 24 / 4), 0.125f, part_size.content_width * 13, 2, COLOR_BLACK);
+                }
             }
             else if(part.meta.special == Part::Specialty::Fraction)
             {
@@ -554,7 +544,7 @@ Equation::RenderResult Equation::render_main(const int x, const int y, const int
     RenderInfo info{
         0,
         x, x + 320, y,
-        Equation::EQU_REGION_HEIGHT,
+        EQU_REGION_HEIGHT,
         editing_part,
         editing_char,
     };
@@ -568,7 +558,7 @@ Equation::RenderResult Equation::render_memory(const int x, const int y, C2D_Spr
     RenderInfo info{
         0,
         x, x + 400, y, 
-        Equation::EQU_REGION_HEIGHT,
+        EQU_REGION_HEIGHT,
         -1,
         -1,
     };
@@ -645,6 +635,18 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                     if(p.meta.position == Part::Position::Start)
                     {
                         toks.push_back(Token{"sqrt", p.meta.next, 0, Token::Type::Function});
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
+                    }
+                    else
+                    {
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenClose});
+                    }
+                }
+                else if(p.meta.special == Part::Specialty::Conjugate)
+                {
+                    if(p.meta.position == Part::Position::Start)
+                    {
+                        toks.push_back(Token{"conj", p.meta.next, 0, Token::Type::Function});
                         toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
                     }
                     else
@@ -868,8 +870,8 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
         std::string_view assoc_variable;
 
         Value(std::string_view v) : val(v) { }
-        Value(double v) : val(v) { }
-        Value(Number v, std::string_view a) : val(v), assoc_variable(a) { }
+        Value(const Number& v) : val(v) { }
+        Value(const Number& v, std::string_view a) : val(v), assoc_variable(a) { }
     };
     const auto get_var = [&](std::string_view name) -> Value {
         if(auto it = variables.find(std::string(name)); it != variables.end())
@@ -887,24 +889,27 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
     const std::map<std::string_view, void(*)(std::vector<Value>&)> function_handlers{
         MK_WRAPPER(abs),
         MK_WRAPPER(sqrt),
-        MK_WRAPPER(tan),
+        MK_WRAPPER(conj),
+
         MK_WRAPPER(cos),
         MK_WRAPPER(sin),
+        MK_WRAPPER(tan),
+
         MK_WRAPPER(acos),
         MK_WRAPPER(asin),
         MK_WRAPPER(atan),
+
+        MK_WRAPPER(cosh),
+        MK_WRAPPER(sinh),
+        MK_WRAPPER(tanh),
+
+        MK_WRAPPER(acosh),
+        MK_WRAPPER(asinh),
+        MK_WRAPPER(atanh),
+
         MK_WRAPPER(exp),
         MK_WRAPPER_FN(ln, log),
         MK_WRAPPER_FN(log, log10),
-        {"cot", [](std::vector<Value>& vals) {
-            vals.back() = Value(1.0/std::tan(vals.back().val.value));
-        }},
-        {"sec", [](std::vector<Value>& vals) {
-            vals.back() = Value(1.0/std::cos(vals.back().val.value));
-        }},
-        {"csc", [](std::vector<Value>& vals) {
-            vals.back() = Value(1.0/std::sin(vals.back().val.value));
-        }},
     };
 
     std::vector<Value> value_stack;
@@ -925,11 +930,15 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
         {
             if(tok->value == "P")
             {
-                value_stack.emplace_back(M_PI);
+                value_stack.emplace_back(PI_VAL);
             }
             else if(tok->value == "e")
             {
-                value_stack.emplace_back(std::exp(1.0));
+                value_stack.emplace_back(E_VAL);
+            }
+            else if(tok->value == "i")
+            {
+                value_stack.emplace_back(I_VAL);
             }
             else
             {
@@ -938,48 +947,19 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
         }
         else if(tok->type == Token::Type::Operator)
         {
+            #define OP_CASE(op) case #op[0] : { \
+                const Value left = value_stack.back(); \
+                value_stack.pop_back(); \
+                const Value right = value_stack.back(); \
+                value_stack.pop_back(); \
+                value_stack.emplace_back(right.val.value op left.val.value); \
+            } break;
             switch(tok->value.front())
             {
-                case '+':
-                {
-                    const Value left = value_stack.back();
-                    value_stack.pop_back();
-                    const Value right = value_stack.back();
-                    value_stack.pop_back();
-
-                    value_stack.emplace_back(left.val.value + right.val.value);
-                }
-                break;
-                case '-':
-                {
-                    const Value left = value_stack.back();
-                    value_stack.pop_back();
-                    const Value right = value_stack.back();
-                    value_stack.pop_back();
-
-                    value_stack.emplace_back(right.val.value - left.val.value);
-                }
-                break;
-                case '*':
-                {
-                    const Value left = value_stack.back();
-                    value_stack.pop_back();
-                    const Value right = value_stack.back();
-                    value_stack.pop_back();
-
-                    value_stack.emplace_back(left.val.value * right.val.value);
-                }
-                break;
-                case '/':
-                {
-                    const Value left = value_stack.back();
-                    value_stack.pop_back();
-                    const Value right = value_stack.back();
-                    value_stack.pop_back();
-
-                    value_stack.emplace_back(right.val.value / left.val.value);
-                }
-                break;
+                OP_CASE(+)
+                OP_CASE(-)
+                OP_CASE(*)
+                OP_CASE(/)
                 case '^':
                 {
                     const Value left = value_stack.back();
@@ -996,7 +976,8 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                     value_stack.pop_back();
                     const Value right = value_stack.back();
                     value_stack.pop_back();
-                    variables.try_emplace(std::string(left.assoc_variable), right.val.value);
+
+                    variables.insert_or_assign(std::string(left.assoc_variable), right.val.value);
                     value_stack.push_back(right);
                 }
                 break;
