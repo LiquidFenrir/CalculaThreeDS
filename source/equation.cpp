@@ -714,7 +714,8 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                         {
                             if(len != 0)
                             {
-                                toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, Token::Type::Variable});
+                                toks.push_back(Token{{beg + start, size_t(len)}, current_idx, start, Token::Type::Variable});
+                                toks.push_back(Token{"*", current_idx, start, Token::Type::Operator});
                             }
 
                             start = pos;
@@ -732,7 +733,8 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                         {
                             if(len != 0)
                             {
-                                toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, Token::Type::Number});
+                                toks.push_back(Token{{beg + start, size_t(len)}, current_idx, start, Token::Type::Number});
+                                toks.push_back(Token{"*", current_idx, start, Token::Type::Operator});
                             }
 
                             start = pos;
@@ -744,14 +746,14 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                     {
                         if(len != 0)
                         {
-                            toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, tmp_is_num ? Token::Type::Number : Token::Type::Variable});
+                            toks.push_back(Token{{beg + start, size_t(len)}, current_idx, start, tmp_is_num ? Token::Type::Number : Token::Type::Variable});
                         }
 
                         start = 0;
                         len = 0;
                         tmp_is_num = -1;
 
-                        toks.push_back(Token{std::string_view{beg + pos, 1}, current_idx, pos, Token::Type::Operator});
+                        toks.push_back(Token{{beg + pos, 1}, current_idx, pos, Token::Type::Operator});
                     }
 
                     ++pos;
@@ -761,16 +763,16 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                 {
                     if(const auto& pn = parts[p.meta.next].meta; pn.position == Part::Position::Start && pn.special == Part::Specialty::Paren)
                     {
-                        toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, Token::Type::Function});
+                        toks.push_back(Token{{beg + start, size_t(len)}, current_idx, start, Token::Type::Function});
                     }
                     else
                     {
-                        toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, Token::Type::Variable});
+                        toks.push_back(Token{{beg + start, size_t(len)}, current_idx, start, Token::Type::Variable});
                     }
                 }
                 else if(tmp_is_num == 1)
                 {
-                    toks.push_back(Token{std::string_view{beg + start, size_t(len)}, current_idx, start, Token::Type::Number});
+                    toks.push_back(Token{{beg + start, size_t(len)}, current_idx, start, Token::Type::Number});
                 }
 
                 start = 0;
