@@ -677,8 +677,20 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                 {
                     if(p.meta.position == Part::Position::Start)
                     {
-                        if(const auto& b = toks.back(); b.value == "e" && b.type == Token::Type::Variable)
-                            toks.push_back(Token{"exp", b.part, b.position, Token::Type::Function});
+                        if(toks.size() >= 1)
+                        {
+                            if(const auto b = toks.back(); b.value == "e" && b.type == Token::Type::Variable)
+                            {
+                                toks.pop_back();
+                                if(toks.size() && (toks.back().type == Token::Type::Variable || toks.back().type == Token::Type::Number))
+                                {
+                                    toks.push_back(Token{"*", toks.back().part, toks.back().position, Token::Type::Operator});
+                                }
+                                toks.push_back(Token{"exp", b.part, b.position, Token::Type::Function});
+                            }
+                            else
+                                toks.push_back(Token{"^", p.meta.next, 0, Token::Type::Operator});
+                        }
                         else
                             toks.push_back(Token{"^", p.meta.next, 0, Token::Type::Operator});
                         toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
@@ -697,6 +709,7 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                             toks.push_back(Token{"*", toks.back().part, toks.back().position, Token::Type::Operator});
                         }
                         toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenOpen});
                     }
                     else if(p.meta.position == Part::Position::Middle)
                     {
@@ -706,6 +719,7 @@ std::pair<Number, bool> Equation::calculate(std::map<std::string, Number>& varia
                     }
                     else
                     {
+                        toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenClose});
                         toks.push_back(Token{std::string_view{}, p.meta.next, 0, Token::Type::ParenClose});
                     }
                 }
